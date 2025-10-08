@@ -9,7 +9,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         haskell-packages = nixpkgs.legacyPackages.${system}.haskell.packages;
-        ghcVersion = "ghc982";
+        ghcVersion = "ghc912";
         pkgs = import nixpkgs { inherit system; };
       in {
         packages = {
@@ -21,13 +21,10 @@
         devShells = {
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
-              haskell.compiler.ghc98
+              haskell.compiler.ghc912
               (haskell-language-server.override {
-                supportedGhcVersions = [ "98" ];
+                supportedGhcVersions = [ "912" ];
               })
-              typst
-              typstfmt
-              typst-lsp
               lldb
               llvmPackages_latest.llvm
               clang
