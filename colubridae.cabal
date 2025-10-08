@@ -75,7 +75,7 @@ library
     , template-haskell
 
   hs-source-dirs:   src
-  default-language: GHC2021
+  default-language: GHC2024
 
 executable colubridae
   import:           warnings, extensions
@@ -87,7 +87,7 @@ executable colubridae
     , relude
 
   hs-source-dirs:   app
-  default-language: GHC2021
+  default-language: GHC2024
 
 test-suite colubridae-test
   import:           warnings, extensions
