@@ -26,4 +26,5 @@ builtIns =
     Map.fromList
         [ (Ident "printInt", (TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in"))
         , (Ident "printString", (TyFun NoExtField [TyLit NoExtField String] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in"))
+        , (Ident "printChar", (TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in"))
         ]

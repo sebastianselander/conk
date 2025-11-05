@@ -25,6 +25,12 @@ define i1 @#{exitFailure}() {
     ret i1 1
 }
 
+@cnl = internal constant [3 x i8] c"%c\\00"
+define i1 @#{printChar}(ptr %env, i8* %x) {
+    %t0 = getelementptr [3 x i8], [3 x i8]* @cnl, i32 0, i32 0
+	call i32 @printf(i8* %t0, i8* %x)
+	ret i1 1
+}
 
 @snl = internal constant [3 x i8] c"%s\\00"
 define i1 @#{printString}(ptr %env, i8* %x) {
@@ -47,6 +53,9 @@ printInt = "printInt"
 
 printString :: String
 printString = "printString"
+
+printChar :: String
+printChar = "printChar"
 
 globalUnit :: String
 globalUnit = "internal_global_unit"
