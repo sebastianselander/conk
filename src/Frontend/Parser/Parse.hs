@@ -83,25 +83,18 @@ type_ = P.choice [typeAtom, pFunTy, pTyCon, parens type_] <?> "type"
         TyFun NoExtField argTys <$> type_
 
     typeAtom :: Parser TypePar
-    typeAtom = P.choice [int, double, char, string, unit, bool]
+    typeAtom =
+        P.choice
+            [ primtype Int "int"
+            , primtype Double "double"
+            , primtype Char "char"
+            , primtype String "string"
+            , primtype Unit "()"
+            , primtype Bool "bool"
+            ]
 
-    int :: Parser TypePar
-    int = TyLit NoExtField Int <$ lexeme (keyword "int")
-
-    double :: Parser TypePar
-    double = TyLit NoExtField Double <$ lexeme (keyword "double")
-
-    char :: Parser TypePar
-    char = TyLit NoExtField Char <$ lexeme (keyword "char")
-
-    string :: Parser TypePar
-    string = TyLit NoExtField String <$ lexeme (keyword "string")
-
-    unit :: Parser TypePar
-    unit = TyLit NoExtField Unit <$ lexeme (keyword "()")
-
-    bool :: Parser TypePar
-    bool = TyLit NoExtField Bool <$ lexeme (keyword "bool")
+primtype :: TyLit -> Text -> Parser TypePar
+primtype lit text = TyLit NoExtField lit <$ lexeme (keyword text)
 
 -- TODO: Remove needing semicolon after if, loop, while!
 pStmtColon :: Parser (Maybe StmtPar)
@@ -287,7 +280,8 @@ atom =
         , literal
         , variable
         , parens expression
-        ] <?> "expression"
+        ]
+        <?> "expression"
   where
     variable :: Parser ExprPar
     variable = do
