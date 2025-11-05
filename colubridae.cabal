@@ -31,7 +31,7 @@ library
     Backend.Llvm.Llvm
     Backend.Llvm.Monad
     Backend.Llvm.Prelude
-    Backend.Llvm.ToLlvm
+    Backend.Llvm.Lower
     Backend.Llvm.Types
     Backend.Types
     Compile

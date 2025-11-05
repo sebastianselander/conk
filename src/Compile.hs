@@ -7,7 +7,7 @@ module Compile where
 import Backend.Desugar.Desugar (desugar)
 import Backend.Desugar.Pretty (prettyDesugar)
 import Backend.Llvm.Llvm (assemble)
-import Backend.Llvm.ToLlvm (llvmOut)
+import Backend.Llvm.Lower (llvmOut)
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)

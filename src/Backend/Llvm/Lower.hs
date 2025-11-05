@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Backend.Llvm.ToLlvm where
+module Backend.Llvm.Lower where
 
 import Prettyprinter
 
