@@ -20,6 +20,7 @@ data Rn
 
 type ProgramRn = Program Rn
 type DefRn = Def Rn
+type ImportRn = Import Rn
 type FnRn = Fn Rn
 type AdtRn = Adt Rn
 type ConstructorRn = Constructor Rn
@@ -38,6 +39,7 @@ deriving instance Data ProgramRn
 deriving instance Data LitRn
 deriving instance Data ArgRn
 deriving instance Data DefRn
+deriving instance Data ImportRn
 deriving instance Data FnRn
 deriving instance Data AdtRn
 deriving instance Data ConstructorRn
@@ -53,6 +55,7 @@ type instance XProgram Rn = XProgram Par
 type instance XArg Rn = XArg Par
 
 type instance XDef Rn = XDef Par
+type instance XImport Rn = XImport Par
 type instance XFn Rn = XFn Par
 
 type instance XAdt Rn = XAdt Par

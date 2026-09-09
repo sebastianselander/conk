@@ -26,6 +26,20 @@ parse' table file =
 parse :: String -> Text -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable
 
+import_ :: Parser ImportPar
+import_ = do
+    gs <- spanStart
+    keyword "import"
+    importName <-
+        lexeme
+            $ P.sepBy
+                identifier
+                (P.hidden $ char '.')
+    P.choice
+        [ (\asName loc -> ImportAs loc importName asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
+        , ((\symbols loc -> Import loc importName symbols) . fromMaybe [] <$> P.optional (parens (commaSepEnd identifier))) <*> spanEnd gs
+        ] <* semicolon
+
 datatype :: Parser AdtPar
 datatype = do
     gs <- spanStart
@@ -46,7 +60,7 @@ constructor = do
         Just tys -> pure $ FunCons loc constructorName tys
 
 definition :: Parser DefPar
-definition = DefFn <$> function <|> DefAdt <$> datatype
+definition = DefImport <$> import_ <|> DefFn <$> function <|> DefAdt <$> datatype
 
 function :: Parser FnPar
 function = do
@@ -181,11 +195,11 @@ match = do
     pMatchArm :: Parser MatchArmPar
     pMatchArm = do
         gs <- spanStart
-        pattern <- pPattern
+        pat <- pPattern
         keyword "=>"
         body <- expression
         loc <- spanEnd gs
-        pure $ MatchArm loc pattern body
+        pure $ MatchArm loc pat body
       where
         pPattern :: Parser PatternPar
         -- NOTE: Must parse wildcard before normal variable or it will be tried as a variable

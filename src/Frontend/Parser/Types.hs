@@ -12,6 +12,7 @@ data Par
 
 type ExprPar = Expr Par
 type ProgramPar = Program Par
+type ImportPar = Import Par
 type LitPar = Lit Par
 type ArgPar = Arg Par
 type DefPar = Def Par
@@ -30,6 +31,7 @@ deriving instance Data ProgramPar
 deriving instance Data LitPar
 deriving instance Data ArgPar
 deriving instance Data DefPar
+deriving instance Data ImportPar
 deriving instance Data FnPar
 deriving instance Data AdtPar
 deriving instance Data ConstructorPar
@@ -40,6 +42,8 @@ deriving instance Data MatchArmPar
 deriving instance Data PatternPar
 
 type instance XProgram Par = NoExtField
+
+type instance XImport Par = SourceInfo
 
 type instance XArg Par = SourceInfo
 

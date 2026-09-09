@@ -58,6 +58,7 @@ deriving instance (Forall Typeable a) => Typeable (Program a)
 data Def a
     = DefFn (Fn a)
     | DefAdt (Adt a)
+    | DefImport (Import a)
     | DefX !(XDef a)
 type family XDef a
 deriving instance (Forall Show a) => Show (Def a)
@@ -68,6 +69,13 @@ type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
 deriving instance (Forall Typeable a) => Typeable (Fn a)
+
+data Import a
+    = Import !(XImport a) [Ident] [Ident] -- import foo (bar, baz)
+    | ImportAs !(XImport a) [Ident] Ident -- import foo.bar as baz
+type family XImport a
+deriving instance (Forall Show a) => Show (Import a)
+deriving instance (Forall Typeable a) => Typeable (Import a)
 
 data Adt a = Adt !(XAdt a) Ident [Constructor a]
 type family XAdt a
@@ -282,6 +290,7 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XLamArg a)
     , c (XFn a)
     , c (XAdt a)
+    , c (XImport a)
     , c (XConstructor a)
     , c (XEnumCons a)
     , c (XFunCons a)

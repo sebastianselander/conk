@@ -17,6 +17,7 @@ data Tc deriving (Data)
 
 type ProgramTc = Program Tc
 type DefTc = Def Tc
+type ImportTc = Import Tc
 type FnTc = Fn Tc
 type AdtTc = Adt Tc
 type ConstructorTc = Constructor Tc
@@ -47,6 +48,7 @@ type instance XProgram Tc = NoExtField
 type instance XArg Tc = NoExtField
 
 type instance XDef Tc = DataConCantHappen
+type instance XImport Tc = NoExtField
 type instance XFn Tc = NoExtField
 
 type instance XAdt Tc = SourceInfo

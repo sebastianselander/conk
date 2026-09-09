@@ -4,6 +4,7 @@
 module Frontend.Renamer.Rn (rename) where
 
 import Control.Lens (locally)
+import Data.Map qualified as Map
 import Control.Monad.Validate (MonadValidate)
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames)
@@ -15,9 +16,16 @@ import Frontend.Types
 import Names (Ident (..), Names, mkNames)
 import Relude
 import Utils (listify')
+import Data.Text qualified as Text
+import System.FilePath qualified as FilePath
 
-rename :: ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename = runGen emptyEnv emptyCtx . rnProgram
+rename :: Map FilePath (Set FnPar) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename symbolMap = runGen emptyEnv (emptyCtx (Map.map (Set.map getName) $ Map.mapKeys namespace symbolMap)) . rnProgram
+  where
+    getName :: FnPar -> Ident
+    getName (Fn _ name _ _ _) = name
+    namespace :: FilePath -> [Ident]
+    namespace path = Ident . Text.pack <$> FilePath.splitDirectories path
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
@@ -26,7 +34,7 @@ rnProgram program@(Program a defs) = do
     uniqueDefs adts
     uniqueDefs functions
     let toplevelSet = Set.fromList $ fmap snd functions
-    defs <- locally definitions (Set.union toplevelSet) (mapM rnDef defs)
+    defs <- locally localDefinitions (Set.union toplevelSet) (mapM rnDef defs)
     names <- names
     pure (Program a defs, mkNames names)
 
@@ -51,6 +59,11 @@ rnFunction (Fn pos name arguments returnType block) = do
 rnDef :: DefPar -> Gen DefRn
 rnDef (DefFn fn) = DefFn <$> rnFunction fn
 rnDef (DefAdt adt) = DefAdt <$> rnAdt adt
+rnDef (DefImport imp) = DefImport <$> rnImport imp
+
+rnImport :: ImportPar -> Gen ImportRn
+rnImport (ImportAs loc path _) = undefined
+rnImport (Import loc path _) = undefined
 
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors

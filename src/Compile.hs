@@ -45,7 +45,7 @@ compile file = do
     res <- liftEither $ left report $ parse file.name file.content
     log (Debug Parse Nothing (toStrict $ pShow res)) []
 
-    (res, names) <- liftEither $ left report $ rename res
+    (res, names) <- liftEither $ left report $ rename undefined res
     log (Debug Rename (Just $ prettyRenamer res) (toStrict $ pShow res)) []
 
     res <- liftEither $ left report $ check res

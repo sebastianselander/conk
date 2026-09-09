@@ -14,7 +14,8 @@ module Frontend.Renamer.Monad
       boundCons,
       emptyCtx,
       emptyEnv,
-      definitions,
+      localDefinitions,
+      importedDefinitions,
       numbering,
       newToOld,
       runGen,
@@ -48,7 +49,10 @@ data Env = Env
     }
     deriving (Show)
 
-newtype Ctx = Ctx {_definitions :: Set Ident}
+data Ctx = Ctx {
+    _localDefinitions :: Set Ident,
+    _importedDefinitions :: Map [Ident] (Set Ident) -- namespace to set of symbols 
+}
     deriving (Show)
 
 $(makeLenses ''Env)
@@ -67,7 +71,7 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
 emptyEnv :: Env
 emptyEnv = Env mempty mempty (return mempty) mempty mempty
 
-emptyCtx :: Ctx
+emptyCtx :: Map [Ident] (Set Ident) -> Ctx
 emptyCtx = Ctx builtInNames
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
@@ -80,8 +84,9 @@ runGen env ctx =
 names :: Gen (Map Ident Ident)
 names = use newToOld
 
+-- TODO: Does not check for imported symbols
 boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
-boundFun name = views definitions (bool Nothing (Just name) . Set.member name)
+boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
 
 boundCons :: (MonadState Env m) => Ident -> m (Maybe Ident)
 boundCons name = uses constructors (bool Nothing (Just name) . Set.member name)

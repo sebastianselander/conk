@@ -58,6 +58,7 @@ library
 
   build-depends:
     , base
+    , filepath
     , containers
     , dlist
     , extra
