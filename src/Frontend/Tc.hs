@@ -138,8 +138,8 @@ tcFunction names funTable conTable fun@(Fn _ _ args rt _) =
                     pure $ Block (info, Any) stmts Nothing
             pure (Fn NoExtField name args retTy block)
 
-infBlock :: BlockRn -> TcM BlockTc
-infBlock (Block info statements tailExpression) = do
+inferBlock :: BlockRn -> TcM BlockTc
+inferBlock (Block info statements tailExpression) = do
     stmts <- mapM infStmt statements
     expr <- mapM infExpr tailExpression
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
@@ -292,13 +292,13 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
             Just expr -> do
                 expr <- tcExpr returnType expr
                 pure $ Ret (info, returnType) (Just expr)
-    EBlock NoExtField block -> EBlock NoExtField <$> infBlock block
+    EBlock NoExtField block -> EBlock NoExtField <$> inferBlock block
     Break info expr -> do
         expr <- mapM infExpr expr
         pure $ Break (info, maybe (TyLit NoExtField Unit) typeOf expr) expr
     If info condition true false -> do
         condition <- tcExpr (TyLit NoExtField Bool) condition
-        true <- infBlock true
+        true <- inferBlock true
         let ty = typeOf true
         false <- mapM (tcBlock ty) false
         pure $ If (info, ty) condition true false
