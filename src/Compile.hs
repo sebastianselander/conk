@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use concatMap" #-}
@@ -38,9 +39,10 @@ log :: (MonadWriter DebugOutputs m) => DebugOutput -> [Text] -> m ()
 log debug warnings = do
     tell (Debugs [debug] warnings)
 
-compile :: String -> Text -> ExceptT Text (Writer DebugOutputs) Text
-compile fileName fileContents = do
-    res <- liftEither $ left report $ parse fileName fileContents
+
+compile :: File -> ExceptT Text (Writer DebugOutputs) Text
+compile file = do
+    res <- liftEither $ left report $ parse file.name file.content
     log (Debug Parse Nothing (toStrict $ pShow res)) []
 
     (res, names) <- liftEither $ left report $ rename res
@@ -65,8 +67,10 @@ compile fileName fileContents = do
             log (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
             pure (llvmOut res)
 
-runCompile :: String -> Text -> (Either Text Text, DebugOutputs)
-runCompile fileName = runWriter . runExceptT . compile fileName
+data File = File { name :: String, content :: Text }
+
+runCompile :: File -> (Either Text Text, DebugOutputs)
+runCompile = runWriter . runExceptT . compile
 
 showDebug :: Set Pass -> DebugOutput -> Text
 showDebug dumps (Debug phase pretty normal) =

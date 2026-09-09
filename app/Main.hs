@@ -7,12 +7,13 @@ import Data.Text (null)
 import Options ( Options(..), cmdlineParser )
 import System.Process
 import qualified Data.Text as Text
+import Compile (File(File))
 
 main :: IO ()
 main = do
-    Options {input, dumps} <- cmdlineParser
-    contents <- decodeUtf8 <$> readFileBS input
-    case runCompile input contents of
+    Options {filepath, dumps} <- cmdlineParser
+    contents <- decodeUtf8 <$> readFileBS filepath
+    case runCompile (File filepath contents) of
         (Left err, debugs) -> do
             hPutStrLn' stderr $ showDebugs dumps debugs
             hPutStrLn' stderr err

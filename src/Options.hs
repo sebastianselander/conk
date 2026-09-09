@@ -11,7 +11,7 @@ data Pass = Parse | Rename | StCheck | TypeCheck | Desugar | Llvm
 
 data Options = Options
     { dumps :: Set Pass
-    , input :: FilePath
+    , filepath :: FilePath
     }
 
 cmdlineParser :: IO Options
@@ -20,8 +20,8 @@ cmdlineParser = execParser (info (options <**> helper) fullDesc)
 options :: Parser Options
 options = do
     dumps <- pDumps
-    input <- pInput
-    pure $ Options {dumps, input}
+    filepath <- pInput
+    pure $ Options {dumps, filepath}
 
 pDumps :: Parser (Set Pass)
 pDumps =
