@@ -1,4 +1,4 @@
-# Colubridae
+# conk
 
 ## Installation
 
@@ -13,8 +13,8 @@ currently neccesary dependencies.
 ### Build
 
 ```
-git clone --depth 1 git@github.com:sebastianselander/colubridae.git
-cd colubridae
+git clone --depth 1 git@github.com:sebastianselander/conk.git
+cd conk
 cabal build
 ```
 
@@ -27,7 +27,7 @@ Please create an issue if you encounter any bug or unexpected behaviour (which y
 
 ### Program
 
-A Colubridae program consists of a list of top level definitions, where a top
+A Conk program consists of a list of top level definitions, where a top
 level definition is a function.
 
 ```python

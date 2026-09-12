@@ -1,0 +1,104 @@
+cabal-version:   3.4
+name:            conk
+version:         0.1.0.0
+
+-- synopsis:
+-- description:
+license:         MIT
+license-file:    LICENSE
+author:          sebastianselander
+maintainer:      sebastian.selander@gmail.com
+
+-- copyright:
+category:        Language
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+  ghc-options: -Wall -Wno-name-shadowing
+
+common extensions
+  default-extensions: NoImplicitPrelude
+
+library
+  import:           warnings, extensions
+  exposed-modules:
+    Backend.Desugar.Basic
+    Backend.Desugar.Breaks
+    Backend.Desugar.Desugar
+    Backend.Desugar.Pretty
+    Backend.Desugar.Types
+    Backend.Llvm.Llvm
+    Backend.Llvm.Monad
+    Backend.Llvm.Prelude
+    Backend.Llvm.Lower
+    Backend.Llvm.Types
+    Backend.Types
+    Compile
+    Frontend.Builtin
+    Frontend.Error
+    Frontend.Parser.Parse
+    Frontend.Parser.Types
+    Frontend.Parser.Utils
+    Frontend.Renamer.Monad
+    Frontend.Renamer.Pretty
+    Frontend.Renamer.Rn
+    Frontend.Renamer.Types
+    Frontend.StatementCheck
+    Frontend.Tc
+    Frontend.TH
+    Frontend.Typechecker.Ctx
+    Frontend.Typechecker.Pretty
+    Frontend.Typechecker.Types
+    Frontend.Types
+    Names
+    Options
+    Origin
+    Utils
+
+  build-depends:
+    , base
+    , containers
+    , dlist
+    , extra
+    , lens
+    , megaparsec
+    , monad-validate
+    , mtl
+    , optparse-applicative
+    , parser-combinators
+    , pretty-simple
+    , prettyprinter
+    , relude
+    , string-interpolate
+    , syb
+    , template-haskell
+
+  hs-source-dirs:   src
+  default-language: GHC2024
+
+executable conk
+  import:           warnings, extensions
+  main-is:          Main.hs
+  build-depends:
+    , conk
+    , pretty-simple
+    , process
+    , relude
+
+  hs-source-dirs:   app
+  default-language: GHC2024
+
+test-suite conk-test
+  import:           warnings, extensions
+  default-language: GHC2021
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , conk
+    , directory
+    , filepath
+    , process
+    , relude
