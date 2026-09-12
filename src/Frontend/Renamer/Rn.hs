@@ -3,8 +3,9 @@
 
 module Frontend.Renamer.Rn (rename) where
 
-import Control.Lens (locally)
+import Control.Lens (locally, modifying, view)
 import Control.Monad.Validate (MonadValidate)
+import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames)
 import Frontend.Error
@@ -12,12 +13,13 @@ import Frontend.Parser.Types
 import Frontend.Renamer.Monad
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..), Names, mkNames)
-import Relude
+import Names (Ident (..), Names, intercalate, mkNames)
+import Relude hiding (intercalate)
 import Utils (listify')
 
-rename :: Map [Ident] (Set DefPar) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename symbolMap = runGen emptyEnv (emptyCtx symbolMap) . rnProgram
+rename :: Map Ident (Boundedness, [Ident]) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename symbolMap prg@(Program namespace _) =
+    runGen (emptyEnv symbolMap) (emptyCtx namespace) $ rnProgram prg
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
@@ -53,10 +55,22 @@ rnDef (DefFn fn) = DefFn <$> rnFunction fn
 rnDef (DefAdt adt) = DefAdt <$> rnAdt adt
 rnDef (DefImport imp) = DefImport <$> rnImport imp
 
+{-|
+Transforms `import foo.bar (baz)` to `import foo.bar` and adds `baz -> foo.bar.baz`
+to the map of imported symbols. We then replace `baz` with `foo.bar.baz` at the usage sites
+
+Transforms `import foo.bar as baz` to `import foo.bar` and then at the usage sites we replace `baz` with `foo.bar`
+
+`import foo.bar` is kept as is.
+-}
 rnImport :: ImportPar -> Gen ImportRn
-rnImport (ImportAs loc path _) = undefined
-rnImport (Import loc path _) = undefined
-rnImport (ImportQualified loc path) = undefined
+rnImport (ImportAs loc path name) = do
+    insertImportName name path
+    pure (ImportQualified loc path)
+rnImport (Import loc path symbols) = do
+    modifying importedDefinitions (\acc -> foldr (`Map.insert` (Toplevel, path)) acc symbols)
+    pure (ImportQualified loc path)
+rnImport (ImportQualified loc path) = pure (ImportQualified loc path)
 
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors
@@ -83,13 +97,15 @@ rnExpr :: ExprPar -> Gen ExprRn
 rnExpr = \case
     Lit info lit -> Lit info <$> rnLit lit
     Var info variable -> do
+        ns <- view namespace
         (bind, name) <-
-            maybe ((Free, Ident "unbound") <$ unboundVariable info variable) pure
+            maybe ((Free, Ident "$unbound$") <$ unboundVariable info variable) pure
                 =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
                 =<< maybe (fmap (Toplevel,) <$> boundFun variable) (pure . Just)
+                =<< maybe (fmap (second (intercalate ".")) <$> boundImported variable) (pure . Just)
                 =<< maybe (fmap (Free,) <$> boundArg variable) (pure . Just)
                 =<< boundVar variable
-        pure $ Var (info, bind) name
+        pure $ Var (info, ns, bind) name
     Prefix info op expr -> Prefix info op <$> rnExpr expr
     BinOp info l op r -> do
         l <- rnExpr l
@@ -152,10 +168,13 @@ rnPattern = fmap snd . go mempty
             when (varName `elem` seen) (conflictingDefinitionArgument loc varName)
             name <- insertVar varName
             pure (varName : seen, PVar loc name)
-        PEnumCon loc conName -> pure ([], PEnumCon loc conName)
+        PEnumCon loc conName -> do
+            ns <- view namespace
+            pure ([], PEnumCon (loc, ns) conName)
         PFunCon loc conName pats -> do
+            ns <- view namespace
             (seen, pats) <- go' seen pats
-            pure (seen, PFunCon loc conName pats)
+            pure (seen, PFunCon (loc, ns) conName pats)
           where
             go' :: [Ident] -> [PatternPar] -> Gen ([Ident], [PatternRn])
             go' seen [] = pure (seen, [])

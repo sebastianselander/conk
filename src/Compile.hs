@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use concatMap" #-}
@@ -10,35 +10,40 @@ import Backend.Desugar.Desugar (desugar)
 import Backend.Desugar.Pretty (prettyDesugar)
 import Backend.Llvm.Llvm (assemble)
 import Backend.Llvm.Lower (llvmOut)
-import Backend.Llvm.Types (Ir (IrMain, IrLib), updateDecls)
+import Backend.Llvm.Prelude (prelude)
+import Backend.Llvm.Types (Ir (IrLib, IrMain), updateDecls)
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
 import Data.Foldable1 (foldr1)
 import Data.Functor qualified as Functor
 import Data.List.NonEmpty qualified as NE
+import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
 import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.Parser.Parse (parse)
+import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
 import Frontend.Tc (tc)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types (ProgramTc)
-import Frontend.Types (Def, Program)
-import Names (Ident, combine)
+import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
+import Names (Ident (..), combine)
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
+import System.Directory.Extra (createDirectory, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
+import System.FilePath (replaceDirectory, replaceExtension, splitDirectories, takeBaseName, (</>))
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Text.Pretty.Simple (pShow)
 import Utils (File (name), zipNE)
-import System.FilePath (takeBaseName, replaceDirectory, replaceExtension, (</>))
-import System.Directory.Extra (removeDirectoryRecursive, createDirectory)
-import Backend.Llvm.Prelude (prelude)
+import Frontend.Renamer.Types (Boundedness(Imported))
+import Table (DefTable(..))
+import Frontend.Builtin (builtIns)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -55,8 +60,22 @@ log debug warnings = do
     tell (Debugs [debug] warnings)
 
 -- TODO(sebsel): Figure out better name
-gatherSymbols :: NonEmpty (File, Program a) -> Map [Ident] (Set (Def a))
-gatherSymbols = undefined
+gatherSymbols :: NonEmpty (File, Program Par) -> Map Ident [Ident]
+gatherSymbols =
+    foldl'
+        ( \acc (file, Program _ defs) ->
+            foldr
+                (\def -> Map.insert def (Ident . pack <$> splitDirectories file.name))
+                acc
+                (mapMaybe nameOf defs)
+        )
+        mempty
+  where
+    nameOf :: Def Par -> Maybe Ident
+    nameOf = \case
+        DefFn (Fn _ name _ _ _) -> Just name
+        DefAdt (Adt _ name _) -> Just name
+        DefImport _ -> Nothing
 
 compile :: NonEmpty File -> ExceptT Text (Writer DebugOutputs) (NonEmpty Ir)
 compile files = do
@@ -64,7 +83,7 @@ compile files = do
     log (Debug Parse Nothing (toStrict $ pShow programs)) []
 
     let modules = NE.zip files programs
-    let symbolsMap = gatherSymbols modules
+    let symbolsMap = Map.map (Imported,) $ gatherSymbols modules
 
     res <- liftEither $ left report $ mapM (rename symbolsMap) programs
     let (programs, names) = second (foldr1 combine) (Functor.unzip res)
@@ -73,7 +92,10 @@ compile files = do
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
-    programs <- case fmap (tc names) res of
+    let 
+    let defTable = Table builtIns mempty mempty mempty
+
+    programs <- case fmap (tc defTable names) res of
         xs ->
             let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
                 single x =
@@ -129,9 +151,12 @@ produceObjectFile asmFilename objectFilename = do
 linkObjectFiles :: NonEmpty FilePath -> FilePath -> IO FilePath
 linkObjectFiles files out = do
     hPutStrLn stderr $ "Linking: " <> show files
-    let process = proc "gcc"
-            (["-no-pie", "-o", out]
-            <> toList files)
+    let process =
+            proc
+                "gcc"
+                ( ["-no-pie", "-o", out]
+                    <> toList files
+                )
     (code, _, err) <- readCreateProcessWithExitCode process ""
     case code of
         ExitSuccess -> pure out
@@ -156,8 +181,12 @@ produceExecutable dumps files out = do
                 removeDirectoryRecursive buildDir
                 createDirectory buildDir
                 preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))
-                asmFiles <- mapM (\(file, prg) -> produceAsmFile (replaceExtension file.name "asm") (Right prg)) (zipNE files prg)
-                objFiles <- mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
+                asmFiles <-
+                    mapM
+                        (\(file, prg) -> produceAsmFile (replaceExtension file.name "asm") (Right prg))
+                        (zipNE files prg)
+                objFiles <-
+                    mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
                 linkObjectFiles objFiles (buildDir </> out)
 
 showDebug :: Set Pass -> DebugOutput -> Text

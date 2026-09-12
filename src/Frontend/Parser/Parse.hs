@@ -15,6 +15,7 @@ import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char.Lexer qualified as P
 import Utils (File(..))
+import Names (mkNamespace)
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
@@ -22,7 +23,7 @@ parse' ::
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
-        $ P.runParserT (Program NoExtField <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
+        $ P.runParserT (Program (mkNamespace file.name) <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
 
 parse :: File -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable

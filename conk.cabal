@@ -55,6 +55,7 @@ library
     Options
     Origin
     Utils
+    Table
 
   build-depends:
     , base

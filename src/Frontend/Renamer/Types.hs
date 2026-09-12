@@ -8,8 +8,9 @@ import Frontend.Parser.Types
 import Prettyprinter
 import Relude hiding (Type)
 import Frontend.Types
+import Names (Namespace)
 
-data Boundedness = Free | Bound | Toplevel | Constructor
+data Boundedness = Free | Bound | Toplevel | Constructor | Imported
     deriving (Show, Eq, Ord, Data)
 
 instance Pretty Boundedness where
@@ -79,11 +80,11 @@ type instance XMatchArm Rn = SourceInfo
 type instance XMatch Rn = SourceInfo
 
 type instance XPVar Rn = SourceInfo
-type instance XPEnumCon Rn = SourceInfo
-type instance XPFunCon Rn = SourceInfo
+type instance XPEnumCon Rn = (SourceInfo, Namespace)
+type instance XPFunCon Rn = (SourceInfo, Namespace)
 
 type instance XLit Rn = XLit Par
-type instance XVar Rn = (SourceInfo, Boundedness)
+type instance XVar Rn = (SourceInfo, Namespace, Boundedness)
 type instance XBinOp Rn = XBinOp Par
 type instance XPrefix Rn = XBinOp Par
 type instance XExprStmt Rn = XExprStmt Par

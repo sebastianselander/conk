@@ -3,20 +3,25 @@
 module Names
     ( Ident (..),
       Names,
+      Namespace,
       mkNames,
       getOriginalName,
+      mkNamespace,
       existName,
       insertName,
       getOriginalName',
       renameBack,
       combine,
+      intercalate,
     ) where
 
 import Data.Data (Data)
 import Data.Map qualified as Map
 import Generics.SYB (everywhere, mkT)
 import Prettyprinter (Pretty (..))
-import Relude
+import Relude hiding (intercalate)
+import System.FilePath (splitDirectories)
+import Data.Text (pack)
 
 newtype Names = Names {unNames :: Map Ident Ident}
     deriving (Show, Data)
@@ -28,12 +33,28 @@ combine (Names names1) (Names names2) = Names (Map.union names1 names2)
 mkNames :: Map Ident Ident -> Names
 mkNames = Names
 
--- Identifier
+mkNamespace :: String -> Namespace
+mkNamespace name = Namespace $ fmap pack (fromList (splitDirectories name))
+
+-- Namespace, e.g: `foo.bar.baz`, here `foo.bar` is the namespace and `baz` is an Ident
+newtype Namespace = Namespace (NonEmpty Text)
+    deriving (Show, Eq, Ord, Data, Semigroup)
+
+-- Identifier: `foo`
 newtype Ident = Ident Text
     deriving (Show, Eq, Ord, Data, Semigroup, Monoid)
 
 instance Pretty Ident where
     pretty (Ident name) = pretty name
+
+intercalate :: Text -> [Ident] -> Ident
+intercalate _ [] = error "INTERNAL ERROR: impossible"
+intercalate t xs = Ident $ go $ fmap (\(Ident name) -> name) xs
+  where
+    go :: [Text] -> Text
+    go [] = ""
+    go [x] = x
+    go (x : xs) = x <> t <> (go xs)
 
 getOriginalName' :: Ident -> Names -> Ident
 getOriginalName' name names =

@@ -16,15 +16,19 @@ module Frontend.Renamer.Monad
       emptyEnv,
       localDefinitions,
       importedDefinitions,
+      importName,
+      namespace,
       numbering,
       newToOld,
       runGen,
       boundFun,
+      boundImported,
       insertArg,
       names,
       checkAndinsertConstrutor,
       arguments,
       resetArgs,
+      insertImportName,
     ) where
 
 import Control.Lens hiding ((<|))
@@ -35,10 +39,9 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames)
 import Frontend.Error
-import Frontend.Parser.Types (DefPar)
 import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Types (SourceInfo)
-import Names (Ident (..))
+import Names (Ident (..), Namespace)
 import Relude hiding (Map, head)
 
 data Env = Env
@@ -47,12 +50,14 @@ data Env = Env
     , _scope :: NonEmpty (Map Ident Ident)
     , _arguments :: Map Ident Ident
     , _constructors :: Set Ident
+    , _importedDefinitions :: Map Ident (Boundedness, [Ident]) -- symbol name to namespaced symbol name
+    , _importName :: Map Ident [Ident] -- as-name to import name (path)
     }
     deriving (Show)
 
 data Ctx = Ctx
     { _localDefinitions :: Set Ident
-    , _importedDefinitions :: Map [Ident] (Set DefPar) -- namespace to set of symbols
+    , _namespace :: Namespace
     }
     deriving (Show)
 
@@ -69,10 +74,10 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
         , MonadValidate [RnError]
         )
 
-emptyEnv :: Env
-emptyEnv = Env mempty mempty (return mempty) mempty mempty
+emptyEnv :: Map Ident (Boundedness, [Ident]) -> Env
+emptyEnv m = Env mempty mempty (return mempty) mempty mempty m mempty
 
-emptyCtx :: Map [Ident] (Set DefPar) -> Ctx
+emptyCtx :: Namespace -> Ctx
 emptyCtx = Ctx builtInNames
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
@@ -88,6 +93,10 @@ names = use newToOld
 -- TODO: Does not check for imported symbols
 boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
 boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
+
+-- | Returns the expanded namespace of the symbol
+boundImported :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, [Ident]))
+boundImported name = uses importedDefinitions (Map.lookup name)
 
 boundCons :: (MonadState Env m) => Ident -> m (Maybe Ident)
 boundCons name = uses constructors (bool Nothing (Just name) . Set.member name)
@@ -133,6 +142,9 @@ insertArg name@(Ident nm) = do
     modifying numbering (Map.insert name n)
     modifying arguments (Map.insert name name')
     pure name'
+
+insertImportName :: (MonadState Env m) => Ident -> [Ident] -> m ()
+insertImportName name path = modifying importName (Map.insert name path)
 
 resetArgs :: (MonadState Env m) => m ()
 resetArgs = modifying arguments mempty

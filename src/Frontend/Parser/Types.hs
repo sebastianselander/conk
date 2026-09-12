@@ -6,6 +6,7 @@ module Frontend.Parser.Types where
 import Data.Data (Data)
 import Relude hiding (intercalate, replicate, Type)
 import Frontend.Types
+import Names (Namespace)
 
 data Par
     deriving (Data)
@@ -41,7 +42,7 @@ deriving instance Data BlockPar
 deriving instance Data MatchArmPar
 deriving instance Data PatternPar
 
-type instance XProgram Par = NoExtField
+type instance XProgram Par = Namespace
 
 type instance XImport Par = SourceInfo
 

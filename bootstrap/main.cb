@@ -1,0 +1,5 @@
+import inc (inc);
+
+def main() {
+    printInt(inc(68));
+}

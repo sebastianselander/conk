@@ -12,16 +12,17 @@ import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
 import Control.Monad.Writer (Writer, runWriter)
 import Data.Data (Data)
 import Data.Map.Strict qualified as Map
-import Frontend.Builtin (builtIns)
 import Frontend.Error
 import Frontend.Renamer.Types
 import Frontend.Typechecker.Ctx (Ctx)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
 import Frontend.Types
-import Names (Ident, Names, getOriginalName')
-import Relude hiding (Any, intercalate)
+import Names (Ident, Names, Namespace, getOriginalName')
+import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
+import Table (DefTable)
+import Table qualified as DefTable
 import Utils (chain, listify')
 
 newtype Env = Env
@@ -30,7 +31,6 @@ newtype Env = Env
     deriving (Show)
 
 $(makeLenses ''Env)
-
 newtype TcM a = Tc
     { runTc ::
         StateT Env (ReaderT Ctx (ValidateT [TcError] (Writer [TcWarning]))) a
@@ -69,24 +69,26 @@ getCons = concat . listify' f
             FunCons loc name argTys ->
                 (name, (TyFun NoExtField (fmap typeOf argTys) returnType, loc))
 
-tc :: Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
-tc names (Program NoExtField defs) =
-    case first partitionEithers $ unzip $ fmap (tcDefs names funTable conTable) defs of
+tc ::
+    DefTable TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
+tc defTable names (Program namespace defs) =
+    case first partitionEithers $ unzip $ fmap (tcDefs names defTable) defs of
         (([], defs), warnings) -> (Right $ Program NoExtField defs, mconcat warnings)
         ((errs, _), warnings) -> (Left $ mconcat errs, mconcat warnings)
-  where
-    funTable = Map.fromList $ getFuns defs
-    conTable = Map.fromList $ getCons defs
 
 tcDefs ::
     Names ->
-    Map Ident (TypeTc, SourceInfo) ->
-    Map Ident (TypeTc, SourceInfo) ->
+    DefTable TypeTc SourceInfo ->
     DefRn ->
     (Either [TcError] DefTc, [TcWarning])
-tcDefs names funTable conTable (DefFn fn) =
-    first (fmap DefFn) $ tcFunction names funTable conTable fn
-tcDefs _ _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
+tcDefs names defTable (DefFn fn) =
+    first (fmap DefFn) $ tcFunction names defTable fn
+tcDefs _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
+tcDefs _ _ (DefImport imp) = (Right (DefImport (tcImport imp)), [])
+
+tcImport :: ImportRn -> ImportTc
+tcImport (ImportQualified _ names) = ImportQualified NoExtField names
+tcImport _ = error "INTERNAL ERROR: impossible case"
 
 tcAdt :: AdtRn -> (AdtTc, [TcWarning])
 tcAdt (Adt loc name constructors) =
@@ -101,11 +103,10 @@ inferConstructor ty = \case
 
 tcFunction ::
     Names ->
-    Map Ident (TypeTc, SourceInfo) ->
-    Map Ident (TypeTc, SourceInfo) ->
+    DefTable TypeTc SourceInfo ->
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
-tcFunction names funTable conTable fun@(Fn _ _ args rt _) =
+tcFunction names defTable fun@(Fn _ _ args rt _) =
     let varTable =
             foldr
                 ( uncurry Map.insert
@@ -120,7 +121,7 @@ tcFunction names funTable conTable fun@(Fn _ _ args rt _) =
                 )
                 mempty
                 args
-        ctx = Ctx.Ctx (Map.union builtIns funTable) conTable (typeOf rt) fun [] names
+        ctx = Ctx.Ctx defTable (typeOf rt) fun [] names
         env = Env varTable
      in run ctx env $ go fun
   where
@@ -149,7 +150,9 @@ tcBlock expectedTy (Block info statements tailExpression) = do
     stmts <- mapM infStmt statements
     expr <- case tailExpression of
         Nothing -> do
-            unless (expectedTy == TyLit NoExtField Unit) (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
+            unless
+                (expectedTy == TyLit NoExtField Unit)
+                (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
             pure Nothing
         Just tail -> Just <$> tcExpr expectedTy tail
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
@@ -192,13 +195,14 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
     Lit info lit ->
         let (ty, b) = infLit lit
          in pure $ Lit (info, ty) b
-    Var (info, bind) name -> do
-        (ty, _declaredAtInfo) <- case bind of
+    Var (info, namespace, boundedness) name -> do
+        (ty, _declaredAtInfo) <- case boundedness of
             Free -> lookupVar name
             Bound -> lookupVar name
-            Toplevel -> (\(ty, info) -> (ty, info)) <$> lookupFun name
-            Constructor -> lookupCon name
-        pure $ Var (info, ty, bind) name
+            Toplevel -> (\(ty, info) -> (ty, info)) <$> lookupFun namespace name
+            Constructor -> lookupCon namespace name
+            Imported -> lookupVar name
+        pure $ Var (info, ty, boundedness) name
     Prefix info Neg expr -> do
         expr <- tcExpr (TyLit NoExtField Int) expr
         pure $ Prefix (info, TyLit NoExtField Int) Neg expr
@@ -361,12 +365,12 @@ tcPat pattype currentPattern = case currentPattern of
     PVar loc varName -> do
         insertVar varName pattype loc
         pure $ PVar (loc, pattype) varName
-    PEnumCon loc conName -> do
-        (ty, _declLoc) <- lookupCon conName
+    PEnumCon (loc, namespace) conName -> do
+        (ty, _declLoc) <- lookupCon namespace conName
         unify' loc pattype ty
         pure $ PEnumCon (loc, ty) conName
-    PFunCon loc conName pats -> do
-        (ty, _declLoc) <- lookupCon conName
+    PFunCon (loc, namespace) conName pats -> do
+        (ty, _declLoc) <- lookupCon namespace conName
         case ty of
             TyFun NoExtField argtys retty
                 | length argtys == length pats -> do
@@ -389,7 +393,7 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         let literal = Lit (info, ty) lit'
         void $ unify info expectedTy literal
         pure literal
-    Var (info, _) _ -> do
+    Var (info, namespace, _) _ -> do
         expr <- infExpr currentExpr
         unify info expectedTy expr
         pure expr
@@ -403,7 +407,9 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
             Neg -> do
                 expr <- infExpr expr
                 let ty = typeOf expr
-                unless (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double]) (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
+                unless
+                    (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double])
+                    (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
                 pure $ Prefix (info, ty) op expr
     BinOp info l op r -> do
         let typeOfOp = operatorType op
@@ -547,16 +553,35 @@ insertVar :: (MonadState Env m) => Ident -> TypeTc -> SourceInfo -> m ()
 insertVar name ty info = modifying variables (Map.insert name (ty, info))
 
 lookupVar :: (MonadState Env m) => Ident -> m (TypeTc, SourceInfo)
-lookupVar name = uses variables (fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name) . Map.lookup name)
+lookupVar name =
+    uses
+        variables
+        (fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name) . Map.lookup name)
 
-lookupCon :: (MonadReader Ctx m) => Ident -> m (TypeTc, SourceInfo)
-lookupCon name = views Ctx.constructors (fromJust . Map.lookup name)
+lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupCon namespace name =
+    views
+        (Ctx.defTable)
+        ( fromJust
+            . Map.lookup name
+            . fromJust
+            . Map.lookup namespace
+            . view DefTable.constructors
+        )
 
 lookupVarTy :: (MonadState Env m) => Ident -> m TypeTc
 lookupVarTy = fmap fst . lookupVar
 
-lookupFun :: (MonadReader Ctx m) => Ident -> m (TypeTc, SourceInfo)
-lookupFun name = views Ctx.functions (fromJust . Map.lookup name)
+lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupFun namespace name =
+    views
+        Ctx.defTable
+        ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
+            . Map.lookup name
+            . fromJust
+            . Map.lookup namespace
+            . view DefTable.functions
+        )
 
 class TypeOf a where
     typeOf :: a -> TypeTc
@@ -599,10 +624,10 @@ instance TypeOf MatchArmTc where
     typeOf (MatchArm _ _ body) = typeOf body
 
 instance TypeOf ArgTc where
-  typeOf (Arg _ _ ty) = ty
+    typeOf (Arg _ _ ty) = ty
 
 instance TypeOf ArgRn where
-  typeOf (Arg _ _ ty) = typeOf ty
+    typeOf (Arg _ _ ty) = typeOf ty
 
 unify ::
     (MonadReader Ctx m, MonadState Env m, MonadValidate [TcError] m, TypeOf a) =>

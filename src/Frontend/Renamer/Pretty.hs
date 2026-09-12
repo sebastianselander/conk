@@ -6,16 +6,16 @@ module Frontend.Renamer.Pretty where
 
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..))
-import Prettyprinter (Doc, Pretty, (<+>))
+import Names (Ident (..), intercalate)
+import Prettyprinter (Doc, Pretty (pretty), concatWith, (<+>))
 import Prettyprinter qualified as Pretty
-import Relude
+import Relude hiding (intercalate)
 
 prettyRenamer :: (Pretty a) => a -> Text
 prettyRenamer = show . Pretty.pretty
 
 instance Pretty ProgramRn where
-    pretty (Program NoExtField defs) =
+    pretty (Program _ defs) =
         Pretty.concatWith
             (Pretty.surround (Pretty.hardline <> Pretty.hardline))
             (fmap Pretty.pretty defs)
@@ -23,6 +23,28 @@ instance Pretty ProgramRn where
 instance Pretty DefRn where
     pretty (DefFn fn) = Pretty.pretty fn
     pretty (DefAdt adt) = Pretty.pretty adt
+    pretty (DefImport imp) = Pretty.pretty imp
+
+instance Pretty ImportRn where
+    pretty (ImportQualified _ names) =
+        "import"
+            <+> concatWith
+                (\a b -> a <> "." <> b)
+                (fmap Pretty.pretty names)
+    pretty (ImportAs _ names asname) =
+        "import"
+            <+> concatWith
+                (\a b -> a <> "." <> b)
+                (fmap pretty names)
+            <+> "as"
+            <+> pretty asname
+    pretty (Import _ names imports) =
+        "import"
+            <+> Pretty.concatWith
+                (\a b -> a <> "." <> b)
+                (fmap pretty names)
+            <+> Pretty.parens
+                (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap pretty imports))
 
 instance Pretty AdtRn where
     pretty (Adt _ name cons) =
