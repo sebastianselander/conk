@@ -37,8 +37,10 @@ import_ = do
                 (P.hidden $ char '.')
     P.choice
         [ (\asName loc -> ImportAs loc importName asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
-        , ((\symbols loc -> Import loc importName symbols) . fromMaybe [] <$> P.optional (parens (commaSepEnd identifier))) <*> spanEnd gs
-        ] <* semicolon
+        , ((\symbols loc -> Import loc importName symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
+        , ImportQualified <$> spanEnd gs <*> pure importName
+        ]
+        <* semicolon
 
 datatype :: Parser AdtPar
 datatype = do

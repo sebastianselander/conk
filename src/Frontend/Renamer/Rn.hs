@@ -64,6 +64,7 @@ rnDef (DefImport imp) = DefImport <$> rnImport imp
 rnImport :: ImportPar -> Gen ImportRn
 rnImport (ImportAs loc path _) = undefined
 rnImport (Import loc path _) = undefined
+rnImport (ImportQualified loc path) = undefined
 
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors

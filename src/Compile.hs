@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Use concatMap" #-}
 
 module Compile where
@@ -16,14 +17,17 @@ import Data.Set qualified as Set
 import Data.Text (concat)
 import Frontend.Error (Report (..))
 import Frontend.Parser.Parse (parse)
+import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
 import Frontend.Tc (tc)
-import Relude hiding (concatMap, concat, intercalate)
-import Text.Pretty.Simple (pShow)
-import Options(Pass(..))
-import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Typechecker.Pretty (pThing)
+import Options (Pass (..))
+import Relude hiding (concat, concatMap, intercalate)
+import Text.Pretty.Simple (pShow)
+import Utils (File)
+import Frontend.Types (Program, Def)
+import Names (Ident)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -39,11 +43,17 @@ log :: (MonadWriter DebugOutputs m) => DebugOutput -> [Text] -> m ()
 log debug warnings = do
     tell (Debugs [debug] warnings)
 
+-- TODO(sebsel): Figure out better name
+gatherSymbols :: [(File, Program a)] -> Map [Ident] (Set (Def a))
+gatherSymbols = undefined
 
-compile :: File -> ExceptT Text (Writer DebugOutputs) Text
-compile file = do
-    res <- liftEither $ left report $ parse file.name file.content
-    log (Debug Parse Nothing (toStrict $ pShow res)) []
+compile :: [File] -> ExceptT Text (Writer DebugOutputs) Text
+compile files = do
+    programs <- liftEither $ left report $ mapM parse files
+    log (Debug Parse Nothing (toStrict $ pShow programs)) []
+
+    let modules = zip files programs
+    let symbolsMap = gatherSymbols modules 
 
     (res, names) <- liftEither $ left report $ rename undefined res
     log (Debug Rename (Just $ prettyRenamer res) (toStrict $ pShow res)) []
@@ -66,8 +76,6 @@ compile file = do
         res -> do
             log (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
             pure (llvmOut res)
-
-data File = File { name :: String, content :: Text }
 
 runCompile :: File -> (Either Text Text, DebugOutputs)
 runCompile = runWriter . runExceptT . compile

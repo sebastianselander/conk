@@ -69,6 +69,7 @@ deriving instance (Forall Show a) => Show (Fn a)
 
 data Import a
     = Import !(XImport a) [Ident] [Ident] -- import foo (bar, baz)
+    | ImportQualified !(XImport a) [Ident]
     | ImportAs !(XImport a) [Ident] Ident -- import foo.bar as baz
 type family XImport a
 deriving instance (Forall Show a) => Show (Import a)
