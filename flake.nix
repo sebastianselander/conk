@@ -1,5 +1,5 @@
 {
-  description = "Colubridae programming language";
+  description = "The Conk programming language";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

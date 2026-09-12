@@ -1,5 +1,5 @@
 cabal-version:   3.4
-name:            colubridae
+name:            conk
 version:         0.1.0.0
 
 -- synopsis:
@@ -78,11 +78,11 @@ library
   hs-source-dirs:   src
   default-language: GHC2024
 
-executable colubridae
+executable conk
   import:           warnings, extensions
   main-is:          Main.hs
   build-depends:
-    , colubridae
+    , conk
     , pretty-simple
     , process
     , relude
@@ -93,7 +93,7 @@ executable colubridae
   hs-source-dirs:   app
   default-language: GHC2024
 
-test-suite colubridae-test
+test-suite conk-test
   import:           warnings, extensions
   default-language: GHC2021
   type:             exitcode-stdio-1.0
@@ -101,7 +101,7 @@ test-suite colubridae-test
   main-is:          Main.hs
   build-depends:
     , base
-    , colubridae
+    , conk
     , directory
     , filepath
     , process
