@@ -1,16 +1,22 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Backend.Llvm.Types where
 
+import Backend.Types (Type (..))
 import Data.Data (Data)
 import Names (Ident)
 import Origin
 import Relude hiding (Type)
-import Backend.Types (Type (..))
 
-newtype Ir = Ir [Decl]
+data Ir = IrMain {_decls :: [Decl]} | IrLib {_decls :: [Decl]}
     deriving (Show)
+
+updateDecls :: ([Decl] -> [Decl]) -> Ir -> Ir
+updateDecls f (IrMain decls) = IrMain (f decls)
+updateDecls f (IrLib decls) = IrLib (f decls)
+
+data Ellipsis = Ellipsis | NoEllipsis
+    deriving (Show, Eq, Ord)
 
 -- These are declared in the order we want them defined in the ir file
 data Decl
@@ -18,6 +24,11 @@ data Decl
     | Define !Origin !Ident [Operand] !Type [Named Instruction]
     | TypeDefinition !Ident !Type
     | GlobalString !Ident !Type !Text
+    | Declare
+        !Type -- return type
+        Ident -- name
+        [Type] -- argument types
+        !Ellipsis -- varargs?
     deriving (Show, Eq, Ord)
 
 data Operand

@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use concatMap" #-}
@@ -10,24 +10,35 @@ import Backend.Desugar.Desugar (desugar)
 import Backend.Desugar.Pretty (prettyDesugar)
 import Backend.Llvm.Llvm (assemble)
 import Backend.Llvm.Lower (llvmOut)
+import Backend.Llvm.Types (Ir (IrMain, IrLib), updateDecls)
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
+import Data.Foldable1 (foldr1)
+import Data.Functor qualified as Functor
+import Data.List.NonEmpty qualified as NE
 import Data.Set qualified as Set
-import Data.Text (concat)
-import Frontend.Error (Report (..))
+import Data.Text (concat, pack)
+import Data.Text.IO (hPutStrLn)
+import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.Parser.Parse (parse)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
 import Frontend.Tc (tc)
 import Frontend.Typechecker.Pretty (pThing)
+import Frontend.Typechecker.Types (ProgramTc)
+import Frontend.Types (Def, Program)
+import Names (Ident, combine)
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
+import System.Exit (ExitCode (..))
+import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Text.Pretty.Simple (pShow)
-import Utils (File)
-import Frontend.Types (Program, Def)
-import Names (Ident)
+import Utils (File (name), zipNE)
+import System.FilePath (takeBaseName, replaceDirectory, replaceExtension, (</>))
+import System.Directory.Extra (removeDirectoryRecursive, createDirectory)
+import Backend.Llvm.Prelude (prelude)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -44,41 +55,110 @@ log debug warnings = do
     tell (Debugs [debug] warnings)
 
 -- TODO(sebsel): Figure out better name
-gatherSymbols :: [(File, Program a)] -> Map [Ident] (Set (Def a))
+gatherSymbols :: NonEmpty (File, Program a) -> Map [Ident] (Set (Def a))
 gatherSymbols = undefined
 
-compile :: [File] -> ExceptT Text (Writer DebugOutputs) Text
+compile :: NonEmpty File -> ExceptT Text (Writer DebugOutputs) (NonEmpty Ir)
 compile files = do
     programs <- liftEither $ left report $ mapM parse files
     log (Debug Parse Nothing (toStrict $ pShow programs)) []
 
-    let modules = zip files programs
-    let symbolsMap = gatherSymbols modules 
+    let modules = NE.zip files programs
+    let symbolsMap = gatherSymbols modules
 
-    (res, names) <- liftEither $ left report $ rename undefined res
-    log (Debug Rename (Just $ prettyRenamer res) (toStrict $ pShow res)) []
+    res <- liftEither $ left report $ mapM (rename symbolsMap) programs
+    let (programs, names) = second (foldr1 combine) (Functor.unzip res)
+    log (Debug Rename (Just $ prettyRenamer programs) (toStrict $ pShow res)) []
 
-    res <- liftEither $ left report $ check res
+    res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
-    res <- case tc names res of
-        (res, warnings) -> do
-            res <- liftEither $ left report res
-            log (Debug TypeCheck (Just $ pThing res) (toStrict $ pShow res)) (fmap report warnings)
-            pure res
+    programs <- case fmap (tc names) res of
+        xs ->
+            let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
+                single x =
+                    case x of
+                        (res, warnings) -> do
+                            res <- liftEither $ left report res
+                            log (Debug TypeCheck (Just $ pThing res) (toStrict $ pShow res)) (fmap report warnings)
+                            pure res
+             in mapM single xs
 
-    res <- case desugar names res of
-        res -> do
+    res <- case fmap (desugar names) programs of
+        res -> forM res $ \res -> do
             log (Debug Desugar (Just $ prettyDesugar res) (toStrict $ pShow res)) []
             pure res
 
-    case assemble res of
-        res -> do
+    case fmap assemble res of
+        res -> forM res $ \res -> do
             log (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
-            pure (llvmOut res)
+            pure res
 
-runCompile :: File -> (Either Text Text, DebugOutputs)
+runCompile :: NonEmpty File -> (Either Text (NonEmpty Ir), DebugOutputs)
 runCompile = runWriter . runExceptT . compile
+
+produceAsmFile :: FilePath -> Either Text Ir -> IO FilePath
+produceAsmFile asmFilename ir = do
+    ir <- pure $ fmap (updateDecls (fst prelude <>)) ir
+    let llFile = "./build/" <> replaceExtension (takeBaseName asmFilename) "ll"
+    case ir of
+        Right ir -> writeFileText llFile (llvmOut ir)
+        Left raw -> writeFileText llFile raw
+    let out = replaceDirectory asmFilename "./build/"
+    let process = proc "llc" [llFile, "-o", out]
+    (code, _, err) <- readCreateProcessWithExitCode process ""
+    case code of
+        ExitSuccess -> do
+            pure out
+        ExitFailure code -> do
+            hPutStrLn stderr ("Failed producing asm file: " <> pack out)
+            hPutStrLn stderr (pack err)
+            exitWith (ExitFailure code)
+
+produceObjectFile :: FilePath -> FilePath -> IO FilePath
+produceObjectFile asmFilename objectFilename = do
+    let process = proc "as" ["--64", asmFilename, "-o", objectFilename]
+    (code, _, err) <- readCreateProcessWithExitCode process ""
+    case code of
+        ExitSuccess -> pure objectFilename
+        ExitFailure code -> do
+            hPutStrLn stderr ("Failed producing object file: " <> pack objectFilename)
+            hPutStrLn stderr (pack err)
+            exitWith (ExitFailure code)
+
+linkObjectFiles :: NonEmpty FilePath -> FilePath -> IO FilePath
+linkObjectFiles files out = do
+    hPutStrLn stderr $ "Linking: " <> show files
+    let process = proc "gcc"
+            (["-no-pie", "-o", out]
+            <> toList files)
+    (code, _, err) <- readCreateProcessWithExitCode process ""
+    case code of
+        ExitSuccess -> pure out
+        ExitFailure code -> do
+            hPutStrLn stderr ("Failed producing executable: " <> pack out)
+            hPutStrLn stderr (pack err)
+            exitWith (ExitFailure code)
+
+produceExecutable :: Set Pass -> NonEmpty File -> FilePath -> IO FilePath
+produceExecutable dumps files out = do
+    case runCompile files of
+        (res, debugs) -> case res of
+            Left err -> do
+                hPutStrLn stderr err
+                exitFailure
+            Right prg -> do
+                let debug = showDebugs dumps debugs
+                case debug of
+                    "" -> pure ()
+                    _ -> hPutStrLn stderr debug
+                let buildDir = "build"
+                removeDirectoryRecursive buildDir
+                createDirectory buildDir
+                preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))
+                asmFiles <- mapM (\(file, prg) -> produceAsmFile (replaceExtension file.name "asm") (Right prg)) (zipNE files prg)
+                objFiles <- mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
+                linkObjectFiles objFiles (buildDir </> out)
 
 showDebug :: Set Pass -> DebugOutput -> Text
 showDebug dumps (Debug phase pretty normal) =

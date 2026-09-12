@@ -1,3 +1,5 @@
-type List {
-    Foo(int)
+def main() {
+    let x = 'a';
+    printChar(x);
+    printChar('\n');
 }

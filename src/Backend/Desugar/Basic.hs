@@ -63,7 +63,7 @@ unitVarible :: DsM TyExpr
 unitVarible = named (pure unit)
 
 unitGlobalName :: Ident
-unitGlobalName = Ident (Text.pack globalUnit)
+unitGlobalName = Ident globalUnit
 
 unitGlobalVariable :: DsM TyExpr
 unitGlobalVariable = pure $ Typed Unit (Var GlblConst unitGlobalName)

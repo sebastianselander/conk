@@ -4,7 +4,6 @@
 module Frontend.Renamer.Rn (rename) where
 
 import Control.Lens (locally)
-import Data.Map qualified as Map
 import Control.Monad.Validate (MonadValidate)
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames)
@@ -16,16 +15,9 @@ import Frontend.Types
 import Names (Ident (..), Names, mkNames)
 import Relude
 import Utils (listify')
-import Data.Text qualified as Text
-import System.FilePath qualified as FilePath
 
-rename :: Map FilePath (Set FnPar) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename symbolMap = runGen emptyEnv (emptyCtx (Map.map (Set.map getName) $ Map.mapKeys namespace symbolMap)) . rnProgram
-  where
-    getName :: FnPar -> Ident
-    getName (Fn _ name _ _ _) = name
-    namespace :: FilePath -> [Ident]
-    namespace path = Ident . Text.pack <$> FilePath.splitDirectories path
+rename :: Map [Ident] (Set DefPar) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename symbolMap = runGen emptyEnv (emptyCtx symbolMap) . rnProgram
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
@@ -13,17 +14,17 @@ import Relude hiding (break, span)
 import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char.Lexer qualified as P
+import Utils (File(..))
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
-    String ->
-    Text ->
+    File -> 
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
-        . P.runParserT (Program NoExtField <$> (lexeme (return ()) *> P.many definition <* P.eof)) file
+        $ P.runParserT (Program NoExtField <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
 
-parse :: String -> Text -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
+parse :: File -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable
 
 import_ :: Parser ImportPar

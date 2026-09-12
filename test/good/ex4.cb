@@ -5,3 +5,8 @@ def foo() -> int {
         }
     }
 }
+
+def main() {
+    printInt(foo());
+    printChar('\n');
+}

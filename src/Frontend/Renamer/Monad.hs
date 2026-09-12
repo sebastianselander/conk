@@ -35,6 +35,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames)
 import Frontend.Error
+import Frontend.Parser.Types (DefPar)
 import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Types (SourceInfo)
 import Names (Ident (..))
@@ -49,10 +50,10 @@ data Env = Env
     }
     deriving (Show)
 
-data Ctx = Ctx {
-    _localDefinitions :: Set Ident,
-    _importedDefinitions :: Map [Ident] (Set Ident) -- namespace to set of symbols 
-}
+data Ctx = Ctx
+    { _localDefinitions :: Set Ident
+    , _importedDefinitions :: Map [Ident] (Set DefPar) -- namespace to set of symbols
+    }
     deriving (Show)
 
 $(makeLenses ''Env)
@@ -71,7 +72,7 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
 emptyEnv :: Env
 emptyEnv = Env mempty mempty (return mempty) mempty mempty
 
-emptyCtx :: Map [Ident] (Set Ident) -> Ctx
+emptyCtx :: Map [Ident] (Set DefPar) -> Ctx
 emptyCtx = Ctx builtInNames
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
@@ -133,7 +134,7 @@ insertArg name@(Ident nm) = do
     modifying arguments (Map.insert name name')
     pure name'
 
-resetArgs :: MonadState Env m => m ()
+resetArgs :: (MonadState Env m) => m ()
 resetArgs = modifying arguments mempty
 
 checkAndinsertConstrutor ::

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Names
     ( Ident (..),
       Names,
@@ -8,6 +9,7 @@ module Names
       insertName,
       getOriginalName',
       renameBack,
+      combine,
     ) where
 
 import Data.Data (Data)
@@ -18,6 +20,10 @@ import Relude
 
 newtype Names = Names {unNames :: Map Ident Ident}
     deriving (Show, Data)
+
+-- | Prefers items in the first `Names`
+combine :: Names -> Names -> Names
+combine (Names names1) (Names names2) = Names (Map.union names1 names2)
 
 mkNames :: Map Ident Ident -> Names
 mkNames = Names
@@ -30,7 +36,9 @@ instance Pretty Ident where
     pretty (Ident name) = pretty name
 
 getOriginalName' :: Ident -> Names -> Ident
-getOriginalName' name names = fromMaybe (error $ "INTERNAL ERROR: can't find name: " <> show name) $ Map.lookup name (unNames names)
+getOriginalName' name names =
+    fromMaybe (error $ "INTERNAL ERROR: can't find name: " <> show name <> " in: " <> show names)
+        $ Map.lookup name (unNames names)
 
 getOriginalName :: Ident -> Names -> Maybe Ident
 getOriginalName name names = Map.lookup name (unNames names)

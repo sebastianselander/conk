@@ -6,6 +6,12 @@ import Data.Generics (Data, everything, everywhere, mkQ, mkT)
 import Relude
 import qualified Data.Text as Text
 
+data File = File { name :: String, content :: Text }
+    deriving (Show)
+
+mkFile :: String -> IO File
+mkFile name = File name . decodeUtf8 <$> readFileBS name
+
 genMap :: (Data a, Typeable b) => (b -> b) -> a -> a
 genMap f = everywhere (mkT f)
 
@@ -40,3 +46,6 @@ catMaybesSnd :: [(a, Maybe b)] -> [(a,b)]
 catMaybesSnd [] = []
 catMaybesSnd ((_, Nothing) : xs) = catMaybesSnd xs
 catMaybesSnd ((a, Just b) : xs) = (a, b) : catMaybesSnd xs
+
+zipNE :: NonEmpty a -> NonEmpty b -> NonEmpty (a,b)
+zipNE (a :| as) (b :| bs) = (a,b) :| Relude.zip as bs
