@@ -83,8 +83,9 @@ prettyType1 ty = prettyType2 ty
 
 prettyType2 :: TypeTc -> Doc ann
 prettyType2 = \case
-    TyCon _ name -> Pretty.pretty name
-    TyLit _ tylit -> case tylit of
+    TyCon NoExtField name -> Pretty.pretty name
+    TyArray NoExtField ty -> Pretty.brackets $ prettyType2 ty
+    TyLit NoExtField tylit -> case tylit of
         Unit -> "()"
         String -> "string"
         Int -> "int"
@@ -189,13 +190,14 @@ instance Pretty LamArgTc where
 
 instance Pretty LitTc where
     pretty lit = case lit of
-        IntLit _ l -> Relude.show l
-        DoubleLit _ l -> Relude.show l
-        StringLit _ l -> Relude.show l
-        CharLit _ l -> Relude.show l
-        BoolLit _ True -> "true"
-        BoolLit _ False -> "false"
-        UnitLit _ -> "()"
+        IntLit NoExtField l -> Relude.show l
+        ArrayLit NoExtField exprs -> Pretty.brackets $ Pretty.concatWith (\l r -> l <> ", " <> r) $ fmap Pretty.pretty exprs
+        DoubleLit NoExtField l -> Relude.show l
+        StringLit NoExtField l -> Relude.show l
+        CharLit NoExtField l -> Relude.show l
+        BoolLit NoExtField True -> "true"
+        BoolLit NoExtField False -> "false"
+        UnitLit NoExtField -> "()"
 
 --
 -- tcPrettyStmt :: StmtTc -> Doc ann

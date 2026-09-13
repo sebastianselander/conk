@@ -175,12 +175,13 @@ rnLamArgs = fmap (reverse . snd) . foldlM f mempty
 
 rnLit :: LitPar -> Gen LitRn
 rnLit = \case
-    IntLit info lit -> pure $ IntLit info lit
-    DoubleLit info lit -> pure $ DoubleLit info lit
-    StringLit info lit -> pure $ StringLit info lit
-    CharLit info lit -> pure $ CharLit info lit
-    BoolLit info lit -> pure $ BoolLit info lit
-    UnitLit info -> pure $ UnitLit info
+    IntLit NoExtField lit -> pure $ IntLit NoExtField lit
+    ArrayLit NoExtField exprs -> ArrayLit NoExtField <$> traverse rnExpr exprs
+    DoubleLit NoExtField lit -> pure $ DoubleLit NoExtField lit
+    StringLit NoExtField lit -> pure $ StringLit NoExtField lit
+    CharLit NoExtField lit -> pure $ CharLit NoExtField lit
+    BoolLit NoExtField lit -> pure $ BoolLit NoExtField lit
+    UnitLit NoExtField -> pure $ UnitLit NoExtField
 
 getAdtNames :: ProgramPar -> [(SourceInfo, Ident)]
 getAdtNames = listify' adtName

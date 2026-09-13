@@ -68,12 +68,15 @@ argument = do
     pure (Arg info name ty)
 
 type_ :: Parser TypePar
-type_ = P.choice [typeAtom, pFunTy, pTyCon, parens type_] <?> "type"
+type_ = P.choice [typeAtom, pFunTy, pTyArray, pTyCon, parens type_] <?> "type"
   where
     pTyCon :: Parser TypePar
     pTyCon = do
         name <- lexeme upperIdentifier
         pure $ TyCon NoExtField name
+
+    pTyArray :: Parser TypePar
+    pTyArray = TyArray NoExtField <$> brackets type_
 
     pFunTy :: Parser TypePar
     pFunTy = do
@@ -298,8 +301,15 @@ literal =
         , char
         , string
         , unit
+        , array
         ]
   where
+    array :: Parser ExprPar
+    array = do  
+        gs <- spanStart
+        res <- brackets (P.sepBy (lexeme expression) (lexeme ","))
+        info <- spanEnd gs
+        pure $ Lit info (ArrayLit NoExtField res)
     unit :: Parser ExprPar
     unit = do
         gs <- spanStart

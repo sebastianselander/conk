@@ -106,6 +106,9 @@ char = lexeme . P.char
 angles :: Parser a -> Parser a
 angles = lexeme . P.between (P.hidden $ char '<') (P.hidden $ char '>')
 
+brackets :: Parser a -> Parser a
+brackets = lexeme . P.between (P.hidden $ char '[') (P.hidden $ char ']')
+
 semicolon :: Parser Char
 semicolon = char ';'
 

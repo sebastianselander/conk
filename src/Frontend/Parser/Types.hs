@@ -79,6 +79,7 @@ type instance XPEnumCon Par = SourceInfo
 type instance XPFunCon Par = SourceInfo
 
 type instance XIntLit Par = NoExtField
+type instance XArrayLit Par = NoExtField
 type instance XDoubleLit Par = NoExtField
 type instance XStringLit Par = NoExtField
 type instance XCharLit Par = NoExtField
@@ -86,6 +87,7 @@ type instance XBoolLit Par = NoExtField
 type instance XUnitLit Par = NoExtField
 
 type instance XTyLit Par = NoExtField
+type instance XTyArray Par = NoExtField
 type instance XTyFun Par = NoExtField
 type instance XType Par = DataConCantHappen
 type instance XTyCon Par = NoExtField

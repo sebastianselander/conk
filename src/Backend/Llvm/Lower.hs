@@ -79,7 +79,7 @@ instance Pretty Constant where
         LInt _ int -> show int
         LDouble _ double -> show double
         LBool _ b -> bool "false" "true" b
-        LChar _ _ -> error "TODO"
+        LChar _ c -> pretty $ ord c
         LUnit -> "1"
         LNull _ -> "null"
         LStruct constants ->

@@ -52,7 +52,7 @@ validateCon errName con@(NormalC nm _) = do
         vars = map (VarE . mkName . return) $ take args ['a' ..]
         refute = InfixE (Just $ VarE (mkName "refute")) (VarE $ mkName "$") (Just $ InfixE (Just $ VarE (mkName "return")) (VarE $ mkName "$") (Just $ foldl' AppE (ConE (mkName name)) vars))
         dispute = InfixE (Just $ VarE (mkName "dispute")) (VarE $ mkName "$") (Just $ InfixE (Just $ VarE (mkName "return")) (VarE $ mkName "$") (Just $ foldl' AppE (ConE (mkName name)) vars))
-        dispute' = InfixE (Just dispute) (VarE $ mkName ">>") (Just $ AppE (VarE $ mkName "pure") (AppE (ConE (mkName "TypeX")) (ConE (mkName "UnsolvableX"))))
+        -- dispute' = InfixE (Just dispute) (VarE $ mkName ">>") (Just $ AppE (VarE $ mkName "pure") (AppE (ConE (mkName "TypeX")) (ConE (mkName "UnsolvableX"))))
     return
         [ SigD (mkName (small nameRefute)) (constraint ty')
         , FunD (mkName (small nameRefute)) [Clause pats (NormalB refute) []]
@@ -73,13 +73,13 @@ getName _ = error "Can not generate function for non-normal constructor"
 genLast :: Type -> Type
 genLast = \case
     AppT t1 t2 -> AppT t1 (genLast t2)
-    ConT {} -> (AppT (VarT . mkName $ "m") (VarT . mkName $ "a"))
+    ConT {} -> AppT (VarT . mkName $ "m") (VarT . mkName $ "a")
     x -> delinearize x
 
 unitLast :: Type -> Type
 unitLast = \case
     AppT t1 t2 -> AppT t1 (unitLast t2)
-    ConT {} -> (AppT (VarT . mkName $ "m") (TupleT 0))
+    ConT {} -> AppT (VarT . mkName $ "m") (TupleT 0)
     x -> delinearize x
 
 delinearize :: Type -> Type

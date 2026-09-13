@@ -23,6 +23,7 @@ import Names (Ident, Names, getOriginalName')
 import Relude hiding (Any, intercalate)
 import Relude.Unsafe (fromJust)
 import Utils (chain, listify')
+import Control.Monad (foldM)
 
 newtype Env = Env
     { _variables :: Map Ident (TypeTc, SourceInfo)
@@ -149,7 +150,9 @@ tcBlock expectedTy (Block info statements tailExpression) = do
     stmts <- mapM infStmt statements
     expr <- case tailExpression of
         Nothing -> do
-            unless (expectedTy == TyLit NoExtField Unit) (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
+            unless
+                (expectedTy == TyLit NoExtField Unit)
+                (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
             pure Nothing
         Just tail -> Just <$> tcExpr expectedTy tail
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
@@ -189,9 +192,9 @@ breaks (Block _ stmts tail) =
 
 infExpr :: ExprRn -> TcM ExprTc
 infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
-    Lit info lit ->
-        let (ty, b) = infLit lit
-         in pure $ Lit (info, ty) b
+    Lit info lit -> do
+        (ty, b) <- infLit info lit
+        pure $ Lit (info, ty) b
     Var (info, bind) name -> do
         (ty, _declaredAtInfo) <- case bind of
             Free -> lookupVar name
@@ -385,7 +388,7 @@ tcPat pattype currentPattern = case currentPattern of
 tcExpr :: TypeTc -> ExprRn -> TcM ExprTc
 tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
     Lit info lit -> do
-        let (ty, lit') = infLit lit
+        (ty, lit') <- infLit info lit
         let literal = Lit (info, ty) lit'
         void $ unify info expectedTy literal
         pure literal
@@ -403,7 +406,9 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
             Neg -> do
                 expr <- infExpr expr
                 let ty = typeOf expr
-                unless (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double]) (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
+                unless
+                    (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double])
+                    (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
                 pure $ Prefix (info, ty) op expr
     BinOp info l op r -> do
         let typeOfOp = operatorType op
@@ -509,45 +514,57 @@ operatorReturnType inputTy = \case
     Add -> inputTy
     Sub -> inputTy
     Mod -> inputTy
-    Or -> (TyLit NoExtField Bool)
-    And -> (TyLit NoExtField Bool)
-    Lt -> (TyLit NoExtField Bool)
-    Gt -> (TyLit NoExtField Bool)
-    Lte -> (TyLit NoExtField Bool)
-    Gte -> (TyLit NoExtField Bool)
-    Eq -> (TyLit NoExtField Bool)
-    Neq -> (TyLit NoExtField Bool)
+    Or -> TyLit NoExtField Bool
+    And -> TyLit NoExtField Bool
+    Lt -> TyLit NoExtField Bool
+    Gt -> TyLit NoExtField Bool
+    Lte -> TyLit NoExtField Bool
+    Gte -> TyLit NoExtField Bool
+    Eq -> TyLit NoExtField Bool
+    Neq -> TyLit NoExtField Bool
 
 operatorType :: BinOp -> TypeTc
 operatorType = \case
-    Mul -> (TyLit NoExtField Int)
-    Div -> (TyLit NoExtField Int)
-    Add -> (TyLit NoExtField Int)
-    Sub -> (TyLit NoExtField Int)
-    Mod -> (TyLit NoExtField Int)
-    Or -> (TyLit NoExtField Bool)
-    And -> (TyLit NoExtField Bool)
-    Lt -> (TyLit NoExtField Int)
-    Gt -> (TyLit NoExtField Int)
-    Lte -> (TyLit NoExtField Int)
-    Gte -> (TyLit NoExtField Int)
-    Eq -> (TyLit NoExtField Int)
-    Neq -> (TyLit NoExtField Int)
+    Mul -> TyLit NoExtField Int
+    Div -> TyLit NoExtField Int
+    Add -> TyLit NoExtField Int
+    Sub -> TyLit NoExtField Int
+    Mod -> TyLit NoExtField Int
+    Or -> TyLit NoExtField Bool
+    And -> TyLit NoExtField Bool
+    Lt -> TyLit NoExtField Int
+    Gt -> TyLit NoExtField Int
+    Lte -> TyLit NoExtField Int
+    Gte -> TyLit NoExtField Int
+    Eq -> TyLit NoExtField Int
+    Neq -> TyLit NoExtField Int
 
-infLit :: LitRn -> (TypeTc, LitTc)
-infLit = \case
-    IntLit info n -> (TyLit NoExtField Int, IntLit info n)
-    DoubleLit info n -> (TyLit NoExtField Double, DoubleLit info n)
-    StringLit info s -> (TyLit NoExtField String, StringLit info s)
-    CharLit info c -> (TyLit NoExtField Char, CharLit info c)
-    BoolLit info b -> (TyLit NoExtField Bool, BoolLit info b)
-    UnitLit info -> (TyLit NoExtField Unit, UnitLit info)
+infLit :: SourceInfo -> LitRn -> TcM (TypeTc, LitTc)
+infLit info = \case
+    IntLit NoExtField n -> pure (TyLit NoExtField Int, IntLit NoExtField n)
+    ArrayLit NoExtField exprs -> do
+        exprs <- traverse infExpr exprs
+        case exprs of
+            [] -> undefined
+            (x : xs) -> do
+                traverse_ (unify info (typeOf x)) xs
+                pure (typeOf x, ArrayLit NoExtField (x:xs))
+    DoubleLit NoExtField n -> pure (TyLit NoExtField Double, DoubleLit NoExtField n)
+    StringLit NoExtField s -> pure (TyLit NoExtField String, StringLit NoExtField s)
+    CharLit NoExtField c -> pure (TyLit NoExtField Char, CharLit NoExtField c)
+    BoolLit NoExtField b -> pure (TyLit NoExtField Bool, BoolLit NoExtField b)
+    UnitLit NoExtField -> pure (TyLit NoExtField Unit, UnitLit NoExtField)
 
 insertVar :: (MonadState Env m) => Ident -> TypeTc -> SourceInfo -> m ()
 insertVar name ty info = modifying variables (Map.insert name (ty, info))
 
 lookupVar :: (MonadState Env m) => Ident -> m (TypeTc, SourceInfo)
-lookupVar name = uses variables (fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name) . Map.lookup name)
+lookupVar name =
+    uses
+        variables
+        ( fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name)
+            . Map.lookup name
+        )
 
 lookupCon :: (MonadReader Ctx m) => Ident -> m (TypeTc, SourceInfo)
 lookupCon name = views Ctx.constructors (fromJust . Map.lookup name)
@@ -589,6 +606,7 @@ instance TypeOf BlockTc where
 instance TypeOf TypeRn where
     typeOf = \case
         TyLit a b -> TyLit a b
+        TyArray NoExtField ty -> TyArray NoExtField (typeOf ty)
         TyFun a b c -> TyFun a (fmap typeOf b) (typeOf c)
         TyCon a b -> TyCon a b
 
@@ -599,10 +617,10 @@ instance TypeOf MatchArmTc where
     typeOf (MatchArm _ _ body) = typeOf body
 
 instance TypeOf ArgTc where
-  typeOf (Arg _ _ ty) = ty
+    typeOf (Arg _ _ ty) = ty
 
 instance TypeOf ArgRn where
-  typeOf (Arg _ _ ty) = typeOf ty
+    typeOf (Arg _ _ ty) = typeOf ty
 
 unify ::
     (MonadReader Ctx m, MonadState Env m, MonadValidate [TcError] m, TypeOf a) =>

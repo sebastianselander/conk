@@ -88,6 +88,7 @@ type instance XApp Rn = XApp Par
 type instance XExpr Rn = DataConCantHappen
 
 type instance XIntLit Rn = NoExtField
+type instance XArrayLit Rn = NoExtField
 type instance XDoubleLit Rn = NoExtField
 type instance XStringLit Rn = NoExtField
 type instance XCharLit Rn = NoExtField
@@ -95,6 +96,7 @@ type instance XBoolLit Rn = NoExtField
 type instance XUnitLit Rn = NoExtField
 
 type instance XTyLit Rn = NoExtField
+type instance XTyArray Rn = NoExtField
 type instance XTyFun Rn = NoExtField
 type instance XType Rn = DataConCantHappen
 type instance XTyCon Rn = NoExtField

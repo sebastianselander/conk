@@ -16,10 +16,10 @@ import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
 
 data NoExtField = NoExtField
-    deriving (Show, Eq, Ord, Data, Typeable, Generic)
+    deriving (Show, Eq, Ord, Data, Generic)
 
 data DataConCantHappen
-    deriving (Show, Eq, Ord, Data, Typeable, Generic)
+    deriving (Show, Eq, Ord, Data, Generic)
 
 data Span = Span
     { start :: !(Pos, Pos)
@@ -52,7 +52,6 @@ data Program a = Program !(XProgram a) [Def a]
 type family XProgram a
 
 deriving instance (Forall Show a) => Show (Program a)
-deriving instance (Forall Typeable a) => Typeable (Program a)
 
 -- Definition
 data Def a
@@ -61,18 +60,15 @@ data Def a
     | DefX !(XDef a)
 type family XDef a
 deriving instance (Forall Show a) => Show (Def a)
-deriving instance (Forall Typeable a) => Typeable (Def a)
 
 data Fn a = Fn !(XFn a) Ident [Arg a] (Type a) (Block a)
 type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
-deriving instance (Forall Typeable a) => Typeable (Fn a)
 
 data Adt a = Adt !(XAdt a) Ident [Constructor a]
 type family XAdt a
 deriving instance (Forall Show a) => Show (Adt a)
-deriving instance (Forall Typeable a) => Typeable (Adt a)
 
 data Constructor a
     = EnumCons (XEnumCons a) Ident
@@ -83,31 +79,37 @@ type family XConstructor a
 type family XEnumCons a
 type family XFunCons a
 deriving instance (Forall Show a) => Show (Constructor a)
-deriving instance (Forall Typeable a) => Typeable (Constructor a)
 
 -- Argument
 data Arg a = Arg !(XArg a) Ident (Type a)
 type family XArg a
 
 deriving instance (Forall Show a) => Show (Arg a)
-deriving instance (Forall Typeable a) => Typeable (Arg a)
 
 -- Type
 data Type a
     = TyLit !(XTyLit a) TyLit
+    | TyArray !(XTyArray a) (Type a)
     | TyFun !(XTyFun a) [Type a] (Type a)
     | Type !(XType a)
     | TyCon !(XTyCon a) Ident
 type family XTyLit a
+type family XTyArray a
 type family XTyFun a
 type family XType a
 type family XTyCon a
 
 coerceType ::
-    (XTyLit t1 ~ XTyLit t2, XTyFun t1 ~ XTyFun t2, XType t1 ~ XType t2, XTyCon t1 ~ XTyCon t2) =>
+    ( XTyLit t1 ~ XTyLit t2
+    , XTyArray t1 ~ XTyArray t2
+    , XTyFun t1 ~ XTyFun t2
+    , XType t1 ~ XType t2
+    , XTyCon t1 ~ XTyCon t2
+    ) =>
     Type t1 ->
     Type t2
 coerceType ty = case ty of
+    TyArray a b -> TyArray a (coerceType b)
     TyLit a b -> TyLit a b
     TyFun a b c -> TyFun a (fmap coerceType b) (coerceType c)
     TyCon a b -> TyCon a b
@@ -117,13 +119,11 @@ data TyLit = Unit | String | Int | Double | Char | Bool
     deriving (Show, Eq, Ord, Enum, Data)
 
 deriving instance (Forall Show a) => Show (Type a)
-deriving instance (Forall Typeable a) => Typeable (Type a)
 
 data Block a = Block !(XBlock a) [Stmt a] (Maybe (Expr a))
 type family XBlock a
 
 deriving instance (Forall Show a) => Show (Block a)
-deriving instance (Forall Typeable a) => Typeable (Block a)
 
 -- Statement
 data Stmt a
@@ -142,7 +142,6 @@ data AssignOp
     deriving (Show, Eq, Ord, Data)
 
 deriving instance (Forall Show a) => Show (Stmt a)
-deriving instance (Forall Typeable a) => Typeable (Stmt a)
 
 -- Expression
 data Expr a
@@ -164,7 +163,6 @@ data Expr a
     | Expr !(XExpr a)
 
 deriving instance (Forall Show a) => Show (Expr a)
-deriving instance (Forall Typeable a) => Typeable (Expr a)
 
 type family XExprStmt a
 type family XLit a
@@ -187,7 +185,6 @@ type family XMatch a
 data MatchArm a = MatchArm !(XMatchArm a) (Pattern a) (Expr a)
 
 deriving instance (Forall Show a) => Show (MatchArm a)
-deriving instance (Forall Typeable a) => Typeable (MatchArm a)
 
 type family XMatchArm a
 
@@ -197,7 +194,6 @@ data Pattern a
     | PFunCon !(XPFunCon a) Ident [Pattern a]
 
 deriving instance (Forall Show a) => Show (Pattern a)
-deriving instance (Forall Typeable a) => Typeable (Pattern a)
 
 type family XPVar a
 type family XPEnumCon a
@@ -207,7 +203,6 @@ data LamArg a = LamArg !(XLamArg a) Ident
 type family XLamArg a
 
 deriving instance (Forall Show a) => Show (LamArg a)
-deriving instance (Forall Typeable a) => Typeable (LamArg a)
 
 data PrefixOp = Not | Neg
     deriving (Show, Eq, Ord, Data)
@@ -231,12 +226,14 @@ data BinOp
 -- Literal
 data Lit a
     = IntLit !(XIntLit a) Integer
+    | ArrayLit !(XArrayLit a) [Expr a]
     | DoubleLit !(XDoubleLit a) Double
     | StringLit !(XStringLit a) Text
     | CharLit !(XCharLit a) Char
     | BoolLit !(XBoolLit a) Bool
     | UnitLit !(XUnitLit a)
 type family XIntLit a
+type family XArrayLit a
 type family XDoubleLit a
 type family XStringLit a
 type family XCharLit a
@@ -244,7 +241,6 @@ type family XBoolLit a
 type family XUnitLit a
 
 deriving instance (Forall Show a) => Show (Lit a)
-deriving instance (Forall Typeable a) => Typeable (Lit a)
 
 type Forall (c :: Data.Kind.Type -> Constraint) a =
     ( c (XApp a)
@@ -261,6 +257,7 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XExprStmt a)
     , c (XIf a)
     , c (XIntLit a)
+    , c (XArrayLit a)
     , c (XLet a)
     , c (XAss a)
     , c (XLit a)
@@ -270,6 +267,7 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XStmt a)
     , c (XStringLit a)
     , c (XTyLit a)
+    , c (XTyArray a)
     , c (XTyCon a)
     , c (XTyFun a)
     , c (XVar a)

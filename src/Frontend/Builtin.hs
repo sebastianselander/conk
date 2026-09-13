@@ -5,7 +5,6 @@ module Frontend.Builtin where
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Frontend.Renamer.Types (Rn)
-import Frontend.Typechecker.Types
 import Frontend.Types
     ( NoExtField (NoExtField),
       SourceInfo (SourceInfo),

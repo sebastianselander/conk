@@ -82,6 +82,7 @@ type instance XApp Tc = TcInfo
 type instance XExpr Tc = DataConCantHappen
 
 type instance XIntLit Tc = NoExtField
+type instance XArrayLit Tc = NoExtField
 type instance XDoubleLit Tc = NoExtField
 type instance XStringLit Tc = NoExtField
 type instance XCharLit Tc = NoExtField
@@ -89,6 +90,7 @@ type instance XBoolLit Tc = NoExtField
 type instance XUnitLit Tc = NoExtField
 
 type instance XTyLit Tc = NoExtField
+type instance XTyArray Tc = NoExtField
 type instance XTyFun Tc = NoExtField
 type instance XTyCon Tc = NoExtField
 type instance XType Tc = MetaTy
@@ -109,5 +111,5 @@ data MetaTy = AnyX
     deriving (Show, Eq, Ord, Data)
 
 data StmtType = StmtType { _stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
-    deriving (Show, Eq, Ord, Data, Typeable)
+    deriving (Show, Eq, Ord, Data)
 $(makeLenses ''StmtType)
