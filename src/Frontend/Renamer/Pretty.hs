@@ -6,7 +6,7 @@ module Frontend.Renamer.Pretty where
 
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..), intercalate)
+import Names (Ident (..))
 import Prettyprinter (Doc, Pretty (pretty), concatWith, (<+>))
 import Prettyprinter qualified as Pretty
 import Relude hiding (intercalate)
@@ -28,21 +28,15 @@ instance Pretty DefRn where
 instance Pretty ImportRn where
     pretty (ImportQualified _ names) =
         "import"
-            <+> concatWith
-                (\a b -> a <> "." <> b)
-                (fmap Pretty.pretty names)
+            <+> Pretty.pretty names
     pretty (ImportAs _ names asname) =
         "import"
-            <+> concatWith
-                (\a b -> a <> "." <> b)
-                (fmap pretty names)
+            <+> pretty names
             <+> "as"
             <+> pretty asname
-    pretty (Import _ names imports) =
+    pretty (Import _ namespace imports) =
         "import"
-            <+> Pretty.concatWith
-                (\a b -> a <> "." <> b)
-                (fmap pretty names)
+            <+> Pretty.pretty namespace
             <+> Pretty.parens
                 (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap pretty imports))
 
@@ -170,7 +164,7 @@ prettyExpr7 :: ExprRn -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var _ name) = Pretty.pretty name
+prettyExpr7 (Var (_,namespace,_) name) = Pretty.pretty namespace <> "." <> Pretty.pretty name
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))

@@ -49,9 +49,9 @@ data Env = Env
     , _numbering :: Map Ident Int
     , _scope :: NonEmpty (Map Ident Ident)
     , _arguments :: Map Ident Ident
-    , _constructors :: Set Ident
-    , _importedDefinitions :: Map Ident (Boundedness, [Ident]) -- symbol name to namespaced symbol name
-    , _importName :: Map Ident [Ident] -- as-name to import name (path)
+    , _constructors :: Map Ident Namespace
+    , _importedDefinitions :: Map Ident (Boundedness, Namespace) -- symbol name to namespaced symbol name
+    , _importName :: Map Ident Namespace -- as-name to import name (path)
     }
     deriving (Show)
 
@@ -74,7 +74,7 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
         , MonadValidate [RnError]
         )
 
-emptyEnv :: Map Ident (Boundedness, [Ident]) -> Env
+emptyEnv :: Map Ident (Boundedness, Namespace) -> Env
 emptyEnv m = Env mempty mempty (return mempty) mempty mempty m mempty
 
 emptyCtx :: Namespace -> Ctx
@@ -95,24 +95,31 @@ boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
 boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
 
 -- | Returns the expanded namespace of the symbol
-boundImported :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, [Ident]))
-boundImported name = uses importedDefinitions (Map.lookup name)
+boundImported :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, Namespace, Ident))
+boundImported name = do
+    mby <- uses importedDefinitions (Map.lookup name)
+    case mby of
+        Just (bind,namespace) -> pure (Just (bind, namespace, name))
+        Nothing -> pure Nothing
 
-boundCons :: (MonadState Env m) => Ident -> m (Maybe Ident)
-boundCons name = uses constructors (bool Nothing (Just name) . Set.member name)
+boundCons :: (MonadState Env m) => Ident -> m (Maybe (Namespace, Ident))
+boundCons name = uses constructors (fmap (,name) . Map.lookup name)
 
-boundArg :: (MonadState Env m) => Ident -> m (Maybe Ident)
-boundArg name = uses arguments (Map.lookup name)
+boundArg :: (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Namespace, Ident))
+boundArg name = do
+    namespace <- view namespace
+    uses arguments (fmap (namespace,) . Map.lookup name)
 
 {-| Checks if a variable is bound in the closest scope
   | It does *not* check if a variable is completely unbound
 -}
-boundVar :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, Ident))
+boundVar :: (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Boundedness, Namespace, Ident))
 boundVar name = do
+    namespace <- view namespace
     (close :| rest) <- use scope
     case Map.lookup name close of
-        Just name' -> pure $ Just (Bound, name')
-        Nothing -> pure ((Free,) <$> findVar name rest)
+        Just name' -> pure $ Just (Bound, namespace, name')
+        Nothing -> pure ((Free,namespace,) <$> findVar name rest)
   where
     findVar :: Ident -> [Map Ident Ident] -> Maybe Ident
     findVar _ [] = Nothing
@@ -143,18 +150,21 @@ insertArg name@(Ident nm) = do
     modifying arguments (Map.insert name name')
     pure name'
 
-insertImportName :: (MonadState Env m) => Ident -> [Ident] -> m ()
+insertImportName :: (MonadState Env m) => Ident -> Namespace -> m ()
 insertImportName name path = modifying importName (Map.insert name path)
 
 resetArgs :: (MonadState Env m) => m ()
 resetArgs = modifying arguments mempty
 
 checkAndinsertConstrutor ::
-    (MonadValidate [RnError] m, MonadState Env m) => SourceInfo -> Ident -> m ()
+    (MonadValidate [RnError] m, MonadState Env m, MonadReader Ctx m) => SourceInfo -> Ident -> m ()
 checkAndinsertConstrutor loc name = do
-    uses constructors (Set.member name) >>= \case
-        True -> conflictingDefinitionArgument loc name
-        False -> modifying constructors (Set.insert name)
+    uses constructors (Map.lookup name) >>= \case
+        Just namespace -> conflictingDefinitionArgument loc name
+        Nothing -> do
+            namespace <- view namespace 
+            -- FIXME: This might be incorrect
+            modifying constructors (Map.insert name namespace)
 
 newContext :: Gen a -> Gen a
 newContext rn = do

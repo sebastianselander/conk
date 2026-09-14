@@ -11,7 +11,7 @@ import Backend.Desugar.Pretty (prettyDesugar)
 import Backend.Llvm.Llvm (assemble)
 import Backend.Llvm.Lower (llvmOut)
 import Backend.Llvm.Prelude (prelude)
-import Backend.Llvm.Types (Ir (IrLib, IrMain), updateDecls)
+import Backend.Llvm.Types (Ir, updateDecls)
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
@@ -20,30 +20,39 @@ import Data.Functor qualified as Functor
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text (concat, pack)
+import Data.Text (concat, pack, intercalate)
 import Data.Text.IO (hPutStrLn)
+import Frontend.Builtin (builtIns)
 import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
+import Frontend.Renamer.Types (Boundedness (Imported))
 import Frontend.StatementCheck (check)
 import Frontend.Tc (tc)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types (ProgramTc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
-import Names (Ident (..), combine)
+import Names (Ident (..), combine, Namespace (Namespace))
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
 import System.Directory.Extra (createDirectory, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
-import System.FilePath (replaceDirectory, replaceExtension, splitDirectories, takeBaseName, (</>))
+import System.FilePath
+    ( dropExtension,
+      replaceDirectory,
+      replaceExtension,
+      splitDirectories,
+      takeBaseName,
+      (</>),
+    )
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
+import Table (DefTable (..))
 import Text.Pretty.Simple (pShow)
 import Utils (File (name), zipNE)
-import Frontend.Renamer.Types (Boundedness(Imported))
-import Table (DefTable(..))
-import Frontend.Builtin (builtIns)
+import qualified Data.Text.Prettyprint.Doc as Pretty
+import qualified Frontend.Renamer.Pretty as Pretty
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -60,12 +69,12 @@ log debug warnings = do
     tell (Debugs [debug] warnings)
 
 -- TODO(sebsel): Figure out better name
-gatherSymbols :: NonEmpty (File, Program Par) -> Map Ident [Ident]
+gatherSymbols :: NonEmpty (File, Program Par) -> Map Ident Namespace
 gatherSymbols =
     foldl'
         ( \acc (file, Program _ defs) ->
             foldr
-                (\def -> Map.insert def (Ident . pack <$> splitDirectories file.name))
+                (\def -> Map.insert def (Namespace $ fromList (pack <$> splitDirectories (dropExtension file.name))))
                 acc
                 (mapMaybe nameOf defs)
         )
@@ -92,10 +101,11 @@ compile files = do
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
-    let 
-    let defTable = Table builtIns mempty mempty mempty
+    let defTable = Table mempty mempty mempty mempty
 
-    programs <- case fmap (tc defTable names) res of
+    let x = intercalate "\n\n" $ toList $ fmap Pretty.prettyRenamer res
+
+    programs <- case error x of -- case fmap (tc defTable names) res of
         xs ->
             let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
                 single x =

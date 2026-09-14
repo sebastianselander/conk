@@ -68,9 +68,9 @@ type family XFn a
 deriving instance (Forall Show a) => Show (Fn a)
 
 data Import a
-    = Import !(XImport a) [Ident] [Ident] -- import foo (bar, baz)
-    | ImportQualified !(XImport a) [Ident] -- import foo.bar.baz
-    | ImportAs !(XImport a) [Ident] Ident -- import foo.bar as baz
+    = Import !(XImport a) Namespace [Ident] -- import foo (bar, baz)
+    | ImportQualified !(XImport a) Namespace -- import foo.bar.baz
+    | ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
     -- Add ImportX and move ImportAs and Import to here, renamer makes them both ImportQualified
 type family XImport a
 deriving instance (Forall Show a) => Show (Import a)

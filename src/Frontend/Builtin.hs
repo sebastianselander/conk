@@ -14,15 +14,16 @@ import Frontend.Types
       XTyLit,
       emptySpan,
     )
-import Names (Ident (..))
+import Names (Ident (..), Namespace(Namespace))
 import Relude hiding (Type)
 
 builtInNames :: Set Ident
-builtInNames = Set.fromList $ Map.keys (builtIns @Rn)
+builtInNames = Set.unions [Set.fromList (Map.keys el) | el <- Map.elems (builtIns @Rn)]
 
-builtIns :: (XTyFun a ~ NoExtField, XTyLit a ~ NoExtField) => Map Ident (Type a, SourceInfo)
+builtIns :: (XTyFun a ~ NoExtField, XTyLit a ~ NoExtField) => Map Namespace (Map Ident (Type a, SourceInfo))
 builtIns =
-    Map.fromList
+    Map.singleton (Namespace ("std" :| []))
+    (Map.fromList
         [
             ( Ident "printInt"
             , (TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in")
@@ -38,4 +39,4 @@ builtIns =
             ( Ident "printChar"
             , (TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in")
             )
-        ]
+        ])

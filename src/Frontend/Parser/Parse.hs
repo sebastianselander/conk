@@ -15,7 +15,8 @@ import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char.Lexer qualified as P
 import Utils (File(..))
-import Names (mkNamespace)
+import Names (mkNamespace, Ident (Ident), Namespace (Namespace))
+import System.FilePath (dropExtension)
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
@@ -23,7 +24,7 @@ parse' ::
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
-        $ P.runParserT (Program (mkNamespace file.name) <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
+        $ P.runParserT (Program (mkNamespace (dropExtension file.name)) <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
 
 parse :: File -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable
@@ -37,10 +38,11 @@ import_ = do
             $ P.sepBy
                 identifier
                 (P.hidden $ char '.')
+    let namespace = Namespace $ fromList (fmap (\(Ident name) -> name) importName)
     P.choice
-        [ (\asName loc -> ImportAs loc importName asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
-        , ((\symbols loc -> Import loc importName symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
-        , ImportQualified <$> spanEnd gs <*> pure importName
+        [ (\asName loc -> ImportAs loc namespace asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
+        , ((\symbols loc -> Import loc namespace symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
+        , ImportQualified <$> spanEnd gs <*> pure namespace
         ]
         <* semicolon
 

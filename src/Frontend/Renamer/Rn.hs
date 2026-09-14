@@ -13,11 +13,11 @@ import Frontend.Parser.Types
 import Frontend.Renamer.Monad
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..), Names, intercalate, mkNames)
+import Names (Ident (..), Names, Namespace (Namespace), mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
 
-rename :: Map Ident (Boundedness, [Ident]) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename :: Map Ident (Boundedness, Namespace) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename symbolMap prg@(Program namespace _) =
     runGen (emptyEnv symbolMap) (emptyCtx namespace) $ rnProgram prg
 
@@ -64,9 +64,9 @@ Transforms `import foo.bar as baz` to `import foo.bar` and then at the usage sit
 `import foo.bar` is kept as is.
 -}
 rnImport :: ImportPar -> Gen ImportRn
-rnImport (ImportAs loc path name) = do
-    insertImportName name path
-    pure (ImportQualified loc path)
+rnImport (ImportAs loc namespace name) = do
+    insertImportName name namespace
+    pure (ImportQualified loc namespace)
 rnImport (Import loc path symbols) = do
     modifying importedDefinitions (\acc -> foldr (`Map.insert` (Toplevel, path)) acc symbols)
     pure (ImportQualified loc path)
@@ -97,15 +97,20 @@ rnExpr :: ExprPar -> Gen ExprRn
 rnExpr = \case
     Lit info lit -> Lit info <$> rnLit lit
     Var info variable -> do
-        ns <- view namespace
-        (bind, name) <-
-            maybe ((Free, Ident "$unbound$") <$ unboundVariable info variable) pure
+        namespace <- view namespace
+        (bind, (namespace, name)) <-
+            maybe
+                ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
+                pure
                 =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
-                =<< maybe (fmap (Toplevel,) <$> boundFun variable) (pure . Just)
-                =<< maybe (fmap (second (intercalate ".")) <$> boundImported variable) (pure . Just)
-                =<< maybe (fmap (Free,) <$> boundArg variable) (pure . Just)
-                =<< boundVar variable
-        pure $ Var (info, ns, bind) name
+                =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
+                =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported variable) (pure . Just)
+                =<< ( maybe
+                        (fmap (Free,) <$> boundArg variable)
+                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                        =<< boundVar variable
+                    )
+        pure $ Var (info, namespace, bind) name
     Prefix info op expr -> Prefix info op <$> rnExpr expr
     BinOp info l op r -> do
         l <- rnExpr l
@@ -121,10 +126,14 @@ rnExpr = \case
         ty <- mapM rnType ty
         pure $ Let (info, ty) name' expr
     Ass info variable op expr -> do
-        (bind, name) <-
-            maybe ((Free, Ident "unbound") <$ unboundVariable info variable) pure
-                =<< maybe (fmap (Free,) <$> boundArg variable) (pure . Just)
-                =<< boundVar variable
+        namespace <- view namespace
+        (bind, (namespace, name)) <-
+            maybe ((Free, (namespace, Ident "unbound")) <$ unboundVariable info variable) pure
+                =<< ( maybe
+                        (fmap (Free,) <$> boundArg variable)
+                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                        =<< boundVar variable
+                    )
         expr <- rnExpr expr
         pure (Ass (info, bind) name op expr)
     Ret a b -> do

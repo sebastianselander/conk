@@ -578,7 +578,7 @@ lookupFun namespace name =
         Ctx.defTable
         ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
             . Map.lookup name
-            . fromJust
+            . fromMaybe (error $ "INTERNAL ERROR: Unable to find namespace: " <> show namespace <> "." <> show name)
             . Map.lookup namespace
             . view DefTable.functions
         )

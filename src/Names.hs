@@ -3,7 +3,7 @@
 module Names
     ( Ident (..),
       Names,
-      Namespace,
+      Namespace( ..),
       mkNames,
       getOriginalName,
       mkNamespace,
@@ -18,7 +18,7 @@ module Names
 import Data.Data (Data)
 import Data.Map qualified as Map
 import Generics.SYB (everywhere, mkT)
-import Prettyprinter (Pretty (..))
+import Prettyprinter (Pretty (..), concatWith, dot, surround)
 import Relude hiding (intercalate)
 import System.FilePath (splitDirectories)
 import Data.Text (pack)
@@ -46,6 +46,9 @@ newtype Ident = Ident Text
 
 instance Pretty Ident where
     pretty (Ident name) = pretty name
+
+instance Pretty Namespace where
+    pretty (Namespace list) = concatWith (surround dot) $ fmap pretty list
 
 intercalate :: Text -> [Ident] -> Ident
 intercalate _ [] = error "INTERNAL ERROR: impossible"
