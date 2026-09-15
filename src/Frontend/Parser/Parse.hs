@@ -17,6 +17,7 @@ import Text.Megaparsec.Char.Lexer qualified as P
 import Utils (File(..))
 import Names (mkNamespace, Ident (Ident), Namespace (Namespace))
 import System.FilePath (dropExtension)
+import Data.Maybe (fromJust)
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
@@ -33,18 +34,16 @@ import_ :: Parser ImportPar
 import_ = do
     gs <- spanStart
     keyword "import"
-    importName <-
-        lexeme
-            $ P.sepBy
-                identifier
-                (P.hidden $ char '.')
-    let namespace = Namespace $ fromList (fmap (\(Ident name) -> name) importName)
+    ns <- namespace
     P.choice
-        [ (\asName loc -> ImportAs loc namespace asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
-        , ((\symbols loc -> Import loc namespace symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
-        , ImportQualified <$> spanEnd gs <*> pure namespace
+        [ (\asName loc -> ImportAs loc ns asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
+        , ((\symbols loc -> Import loc ns symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
+        , ImportQualified <$> spanEnd gs <*> pure ns
         ]
         <* semicolon
+
+namespace :: Parser Namespace
+namespace = Namespace . fromList . fmap (\(Ident name) -> name) <$> lexeme (P.sepBy identifier (P.hidden $ char '.'))
 
 datatype :: Parser AdtPar
 datatype = do
@@ -306,9 +305,16 @@ atom =
     variable :: Parser ExprPar
     variable = do
         gs <- spanStart
-        name <- identifier <|> upperIdentifier
+        names <- lexeme (P.sepBy1  (identifier <|> upperIdentifier) (P.hidden (char '.')))
+        let name = fromJust (viaNonEmpty last names)
+        let namespace = Namespace . fmap (\(Ident name) -> name) . fromList <$> viaNonEmpty init names
+        let namespace = case viaNonEmpty init names of
+                Nothing -> Nothing
+                Just [] -> Nothing
+                Just xs -> Just (Namespace (fmap (\(Ident name) -> name) (fromList xs)))
+        
         info <- spanEnd gs
-        pure (Var info name)
+        pure (Var (info, namespace) name)
 
 literal :: Parser ExprPar
 literal =

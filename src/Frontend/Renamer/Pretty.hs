@@ -7,7 +7,7 @@ module Frontend.Renamer.Pretty where
 import Frontend.Renamer.Types
 import Frontend.Types
 import Names (Ident (..))
-import Prettyprinter (Doc, Pretty (pretty), concatWith, (<+>))
+import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Relude hiding (intercalate)
 
@@ -100,7 +100,7 @@ instance Pretty StmtRn where
     pretty (SExpr NoExtField expr) = Pretty.pretty expr <> Pretty.semi
 
 instance Pretty ArgRn where
-    pretty (Arg _ name ty) = Pretty.pretty name <> ":" <+> Pretty.pretty ty
+    pretty (Arg (_, namespace) name ty) = Pretty.pretty namespace <> "." <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
 instance Pretty TypeRn where
     pretty = prettyType1
@@ -215,10 +215,10 @@ instance Pretty PatternRn where
                     )
 
 instance Pretty LamArgRn where
-    pretty (LamArg (_, Nothing) name) =
-        Pretty.pretty name
-    pretty (LamArg (_, Just ty) name) =
-        Pretty.parens $ Pretty.pretty name <> ":" <+> Pretty.pretty ty
+    pretty (LamArg (_, Nothing, namespace) name) =
+        Pretty.pretty namespace <> "." <> Pretty.pretty name
+    pretty (LamArg (_, Just ty, namespace) name) =
+        Pretty.parens $ Pretty.pretty namespace <> "." <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
 instance Pretty LitRn where
     pretty lit = case lit of

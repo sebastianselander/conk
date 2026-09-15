@@ -62,7 +62,7 @@ type instance XStmt Par = DataConCantHappen
 type instance XSExp Par = NoExtField
 
 type instance XLit Par = SourceInfo
-type instance XVar Par = SourceInfo
+type instance XVar Par = (SourceInfo, Maybe Namespace)
 type instance XPrefix Par = SourceInfo
 type instance XBinOp Par = SourceInfo
 type instance XExprStmt Par = SourceInfo

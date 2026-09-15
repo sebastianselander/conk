@@ -7,7 +7,7 @@ import Control.Lens (locally, modifying, view)
 import Control.Monad.Validate (MonadValidate)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Frontend.Builtin (builtInNames)
+import Frontend.Builtin (builtInNames, builtIns)
 import Frontend.Error
 import Frontend.Parser.Types
 import Frontend.Renamer.Monad
@@ -19,7 +19,10 @@ import Utils (listify')
 
 rename :: Map Ident (Boundedness, Namespace) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename symbolMap prg@(Program namespace _) =
-    runGen (emptyEnv symbolMap) (emptyCtx namespace) $ rnProgram prg
+    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par))) $ rnProgram prg
+  where
+    resolve :: Map Namespace (Map Ident b) -> Map Namespace (Map Ident Ident)
+    resolve = Map.map (Map.mapWithKey const)
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
@@ -96,13 +99,19 @@ rnStatement = \case
 rnExpr :: ExprPar -> Gen ExprRn
 rnExpr = \case
     Lit info lit -> Lit info <$> rnLit lit
-    Var info variable -> do
+    Var (info, ns) variable -> do
         namespace <- view namespace
         (bind, (namespace, name)) <-
             maybe
                 ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
                 pure
                 =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
+                =<< maybe
+                    ( case ns of
+                        Just namespace -> fmap (Builtin,) <$> isBuiltin namespace variable
+                        Nothing -> pure Nothing
+                    )
+                    (pure . Just)
                 =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
                 =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported variable) (pure . Just)
                 =<< ( maybe
@@ -135,7 +144,7 @@ rnExpr = \case
                         =<< boundVar variable
                     )
         expr <- rnExpr expr
-        pure (Ass (info, bind) name op expr)
+        pure (Ass (info, bind, namespace) name op expr)
     Ret a b -> do
         b' <- mapM rnExpr b
         pure $ Ret a b'
@@ -192,20 +201,22 @@ rnPattern = fmap snd . go mempty
                 (seen'', pats) <- go' (seen <> seen') xs
                 pure (seen <> seen' <> seen'', pat : pats)
 
-rnLamArgs :: (MonadState Env m, MonadValidate [RnError] m) => [LamArgPar] -> m [LamArgRn]
+rnLamArgs ::
+    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [LamArgPar] -> m [LamArgRn]
 rnLamArgs = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
-        (MonadState Env m, MonadValidate [RnError] m) =>
+        (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
         ([Ident], [LamArgRn]) ->
         LamArgPar ->
         m ([Ident], [LamArgRn])
     f (seen, acc) (LamArg (info, ty) name) = do
+        namespace <- view namespace
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
-        name <- insertArg name
+        (namespace, name) <- insertArg namespace name
         ty <- mapM rnType ty
-        pure (seen', LamArg (info, ty) name : acc)
+        pure (seen', LamArg (info, ty, namespace) name : acc)
 
 rnLit :: LitPar -> Gen LitRn
 rnLit = \case
@@ -228,20 +239,21 @@ getFunctionNames = listify' fnName
     fnName :: FnPar -> Maybe (SourceInfo, Ident)
     fnName (Fn info name _ _ _) = Just (info, name)
 
-rnArgs :: (MonadState Env m, MonadValidate [RnError] m) => [ArgPar] -> m [ArgRn]
+rnArgs :: (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [ArgPar] -> m [ArgRn]
 rnArgs = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
-        (MonadState Env m, MonadValidate [RnError] m) =>
+        (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
         ([Ident], [ArgRn]) ->
         ArgPar ->
         m ([Ident], [ArgRn])
     f (seen, acc) (Arg info name ty) = do
+        namespace <- view namespace
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
-        name <- insertArg name
+        (namespace, name) <- insertArg namespace name
         ty <- rnType ty
-        pure (seen', Arg info name ty : acc)
+        pure (seen', Arg (info, namespace) name ty : acc)
 
 rnType :: (Monad m) => TypePar -> m TypeRn
 rnType = pure . coerceType

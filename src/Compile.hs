@@ -28,16 +28,16 @@ import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
-import Frontend.Renamer.Types (Boundedness (Imported))
+import Frontend.Renamer.Types (Boundedness (Imported), ProgramRn)
 import Frontend.StatementCheck (check)
-import Frontend.Tc (tc)
+import Frontend.Tc (tc, getFuns, getCons)
 import Frontend.Typechecker.Pretty (pThing)
-import Frontend.Typechecker.Types (ProgramTc)
+import Frontend.Typechecker.Types (ProgramTc, TypeTc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
 import Names (Ident (..), combine, Namespace (Namespace))
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
-import System.Directory.Extra (createDirectory, removeDirectoryRecursive)
+import System.Directory.Extra (createDirectory, removeDirectoryRecursive, doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath
     ( dropExtension,
@@ -48,11 +48,12 @@ import System.FilePath
       (</>),
     )
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
-import Table (DefTable (..))
+import Table (DefTable (..), functions)
 import Text.Pretty.Simple (pShow)
-import Utils (File (name), zipNE)
-import qualified Data.Text.Prettyprint.Doc as Pretty
-import qualified Frontend.Renamer.Pretty as Pretty
+import Utils (File (name), zipNE, listify')
+import Data.Generics (listify, Data)
+import qualified Control.Monad.RWS as Map
+import Control.Lens (view)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -101,11 +102,12 @@ compile files = do
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
-    let defTable = Table mempty mempty mempty mempty
+    let defTable = Table builtIns 
+            (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getFuns defs))) res) 
+            mempty 
+            (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getCons defs))) res) 
 
-    let x = intercalate "\n\n" $ toList $ fmap Pretty.prettyRenamer res
-
-    programs <- case error x of -- case fmap (tc defTable names) res of
+    programs <- case fmap (tc defTable names) res of
         xs ->
             let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
                 single x =
@@ -188,7 +190,8 @@ produceExecutable dumps files out = do
                     "" -> pure ()
                     _ -> hPutStrLn stderr debug
                 let buildDir = "build"
-                removeDirectoryRecursive buildDir
+                exists <- doesFileExist buildDir 
+                when exists $ removeDirectoryRecursive buildDir
                 createDirectory buildDir
                 preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))
                 asmFiles <-

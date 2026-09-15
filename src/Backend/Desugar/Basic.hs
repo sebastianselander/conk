@@ -135,6 +135,10 @@ dsFunction def@(Tc.Fn NoExtField name args returnType (Tc.Block (_info, _) stmts
 dsDef :: Tc.DefTc -> DsM [Def]
 dsDef (Tc.DefFn fn) = pure <$> dsFunction fn
 dsDef (Tc.DefAdt adt) = dsAdt adt
+dsDef (Tc.DefImport imp) =
+    error
+        "Do `declare i32 @foo(i64)` for all used functions from the import. \
+        \ Perhaps the import should not be `ImportQualified`, but rather `ImportExplicit`??"
 
 dsAdt :: Tc.AdtTc -> DsM [Def]
 dsAdt (Tc.Adt _loc name constructors) = do
@@ -508,6 +512,8 @@ dsBound = \case
     Rn.Bound -> Bound
     Rn.Toplevel -> Toplevel
     Rn.Constructor -> Constructor
+    Rn.Builtin -> Toplevel
+    Rn.Imported -> Toplevel
 
 contextually :: DsM a -> DsM (DList TyExpr, a)
 contextually m = do

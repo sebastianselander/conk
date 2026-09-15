@@ -148,7 +148,7 @@ hasInfoExpr = \case
     BinOp info _ _ _ -> info
     App info _ _ -> info
     Let (info, _) _ _ -> info
-    Ass (info, _) _ _ _ -> info
+    Ass (info, _, _) _ _ _ -> info
     Ret info _ -> info
     EBlock NoExtField (Block info _ _) -> info
     Break info _ -> info

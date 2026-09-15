@@ -14,14 +14,14 @@ import Data.Data (Data)
 import Data.Map.Strict qualified as Map
 import Frontend.Error
 import Frontend.Renamer.Types
-import Frontend.Typechecker.Ctx (Ctx)
+import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
 import Frontend.Types
 import Names (Ident, Names, Namespace, getOriginalName')
 import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
-import Table (DefTable)
+import Table (DefTable, builtIns)
 import Table qualified as DefTable
 import Utils (chain, listify')
 
@@ -114,7 +114,7 @@ tcFunction names defTable fun@(Fn _ _ args rt _) =
                             ( name
                             ,
                                 ( typeOf ty
-                                , info
+                                , fst info
                                 )
                             )
                       )
@@ -202,6 +202,11 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
             Toplevel -> (\(ty, info) -> (ty, info)) <$> lookupFun namespace name
             Constructor -> lookupCon namespace name
             Imported -> lookupVar name
+            Builtin -> do
+                builtins <- view (defTable . builtIns)
+                case Map.lookup name =<< Map.lookup namespace builtins of
+                    Just res -> pure res
+                    Nothing -> error "INTERNAL ERROR: Missing builtin"
         pure $ Var (info, ty, boundedness) name
     Prefix info Neg expr -> do
         expr <- tcExpr (TyLit NoExtField Int) expr
@@ -254,7 +259,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         let ty = typeOf expr
         insertVar name ty info
         pure $ Let (StmtType (TyLit NoExtField Unit) ty info) name expr
-    Ass (info, bind) name op expr -> do
+    Ass (info, bind, namespace) name op expr -> do
         (ty, info) <- case bind of
             Toplevel ->
                 assignNonVariable @TcM info
@@ -328,7 +333,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                 pure (typeOf x)
         pure $ Loop (info, ty) block
     Lam info args body -> do
-        let insertArg (LamArg (info, ty) name) = do
+        let insertArg (LamArg (info, ty, namespace) name) = do
                 let ty' = fmap typeOf ty
                 ty <- maybe (Any <$ typeMustBeKnown info name) pure ty'
                 insertVar name ty info
@@ -429,8 +434,8 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         unify' info expectedTy (TyLit NoExtField Unit)
         insertVar name ty info
         pure $ Let (StmtType (TyLit NoExtField Unit) ty info) name expr
-    Ass (info, bind) name op expr -> do
-        expr <- infExpr (Ass (info, bind) name op expr)
+    Ass (info, bind, namespace) name op expr -> do
+        expr <- infExpr (Ass (info, bind, namespace) name op expr)
         unify info expectedTy expr
         pure expr
     Ret info expr -> do
@@ -483,7 +488,7 @@ unifyLambdaArgs ::
     m [LamArgTc]
 unifyLambdaArgs [] = pure []
 unifyLambdaArgs
-    ((expectedType, LamArg (loc, mbArgumentType) argumentName) : xs) = do
+    ((expectedType, LamArg (loc, mbArgumentType, namespace) argumentName) : xs) = do
         mapM_ (unify loc expectedType) mbArgumentType
         let (LamArg ty name) = LamArg @Tc expectedType argumentName
         insertVar name ty loc
@@ -561,7 +566,7 @@ lookupVar name =
 lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
 lookupCon namespace name =
     views
-        (Ctx.defTable)
+        Ctx.defTable
         ( fromJust
             . Map.lookup name
             . fromJust
@@ -575,12 +580,12 @@ lookupVarTy = fmap fst . lookupVar
 lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
 lookupFun namespace name =
     views
-        Ctx.defTable
+        (Ctx.defTable . DefTable.functions)
         ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
             . Map.lookup name
-            . fromMaybe (error $ "INTERNAL ERROR: Unable to find namespace: " <> show namespace <> "." <> show name)
+            . fromMaybe
+                (error $ "INTERNAL ERROR: Unable to find namespace: " <> show namespace <> "." <> show name)
             . Map.lookup namespace
-            . view DefTable.functions
         )
 
 class TypeOf a where

@@ -10,7 +10,7 @@ import Relude hiding (Type)
 import Frontend.Types
 import Names (Namespace)
 
-data Boundedness = Free | Bound | Toplevel | Constructor | Imported
+data Boundedness = Free | Bound | Toplevel | Constructor | Imported | Builtin
     deriving (Show, Eq, Ord, Data)
 
 instance Pretty Boundedness where
@@ -53,7 +53,7 @@ deriving instance Data PatternRn
 
 type instance XProgram Rn = XProgram Par
 
-type instance XArg Rn = XArg Par
+type instance XArg Rn = (SourceInfo, Namespace)
 
 type instance XDef Rn = XDef Par
 type instance XImport Rn = XImport Par
@@ -72,7 +72,7 @@ type instance XEBlock Rn = NoExtField
 type instance XIf Rn = XIf Par
 type instance XWhile Rn = XWhile Par
 type instance XLet Rn = (SourceInfo, Maybe TypeRn)
-type instance XAss Rn = (SourceInfo, Boundedness)
+type instance XAss Rn = (SourceInfo, Boundedness, Namespace)
 type instance XSExp Rn = XSExp Par
 type instance XStmt Rn = DataConCantHappen
 
@@ -105,4 +105,4 @@ type instance XTyCon Rn = NoExtField
 
 type instance XLoop Rn = SourceInfo
 type instance XLam Rn = XLam Par
-type instance XLamArg Rn = (SourceInfo, Maybe TypeRn)
+type instance XLamArg Rn = (SourceInfo, Maybe TypeRn, Namespace)
