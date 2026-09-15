@@ -5,4 +5,7 @@ result/
 out.ll
 out
 tags
-/build
+**/build/*
+build
+build/*
+build/**
