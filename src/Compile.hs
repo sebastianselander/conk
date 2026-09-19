@@ -23,7 +23,7 @@ import Data.Generics (Data, listify)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text (concat, intercalate, pack)
+import Data.Text (concat, intercalate, pack, unpack)
 import Data.Text.IO (hPutStrLn)
 import Frontend.Builtin (builtIns)
 import Frontend.Error (Report (..), TcError, TcWarning)
@@ -102,6 +102,7 @@ compile files = do
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
+
     let defTable =
             Table
                 builtIns
@@ -112,7 +113,6 @@ compile files = do
                 ( Map.unions
                     $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (cons (getTypesAndCons defs)))) res
                 )
-
     programs <- case fmap (tc defTable names) res of
         xs ->
             let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc

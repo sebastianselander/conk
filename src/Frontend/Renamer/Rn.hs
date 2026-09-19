@@ -158,6 +158,7 @@ rnExpr = \case
             maybe
                 ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
                 pure
+                =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported namespace variable) (pure . Just)
                 =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
                 =<< maybe
                     ( case ns of
@@ -166,7 +167,6 @@ rnExpr = \case
                     )
                     (pure . Just)
                 =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
-                =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported variable) (pure . Just)
                 =<< ( maybe
                         (fmap (Free,) <$> boundArg variable)
                         ((pure . Just) . (\(a, b, c) -> (a, (b, c))))

@@ -107,12 +107,12 @@ boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
 boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
 
 -- | Returns the expanded namespace of the symbol
-boundImported :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, Namespace, Ident))
-boundImported name = do
+boundImported :: (MonadState Env m) => Namespace -> Ident -> m (Maybe (Boundedness, Namespace, Ident))
+boundImported namespaceToExlucde name = do
     mby <- uses importedDefinitions (Map.lookup name)
     case mby of
-        Just namespace -> pure (Just (Imported, namespace, name))
-        Nothing -> pure Nothing
+        Just namespace | namespace /= namespaceToExlucde -> pure (Just (Imported, namespace, name))
+        _ -> pure Nothing
 
 boundCons :: (MonadState Env m) => Ident -> m (Maybe (Namespace, Ident))
 boundCons name = uses constructors (fmap (,name) . Map.lookup name)
