@@ -78,7 +78,16 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
         )
 
 emptyEnv :: Map Ident Namespace -> Env
-emptyEnv m = Env mempty mempty (return mempty) mempty mempty m mempty
+emptyEnv imported =
+    Env
+        { _newToOld = mempty
+        , _numbering = mempty
+        , _scope = return mempty
+        , _arguments = mempty
+        , _constructors = mempty
+        , _importedDefinitions = imported
+        , _importName = mempty
+        }
 
 emptyCtx :: Namespace -> Map Namespace (Map Ident Ident) -> Map Namespace (Set Ident) -> Ctx
 emptyCtx = Ctx mempty
