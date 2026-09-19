@@ -8,6 +8,7 @@ module Names
       getOriginalName,
       mkNamespace,
       existName,
+      getText,
       insertName,
       getOriginalName',
       renameBack,
@@ -42,7 +43,10 @@ newtype Namespace = Namespace (NonEmpty Text)
 
 -- Identifier: `foo`
 newtype Ident = Ident Text
-    deriving (Show, Eq, Ord, Data, Semigroup, Monoid)
+    deriving (Show, Eq, Ord, Data, Semigroup, Monoid, IsString)
+
+getText :: Ident -> Text
+getText (Ident txt) = txt
 
 instance Pretty Ident where
     pretty (Ident name) = pretty name

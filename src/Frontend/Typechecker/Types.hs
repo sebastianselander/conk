@@ -48,7 +48,8 @@ type instance XProgram Tc = NoExtField
 type instance XArg Tc = NoExtField
 
 type instance XDef Tc = DataConCantHappen
-type instance XImport Tc = NoExtField
+type instance XImport Tc = DataConCantHappen
+type instance XImportExplicit Tc = [TypeTc]
 type instance XFn Tc = NoExtField
 
 type instance XAdt Tc = SourceInfo
@@ -111,5 +112,5 @@ data MetaTy = AnyX
     deriving (Show, Eq, Ord, Data)
 
 data StmtType = StmtType { _stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
-    deriving (Show, Eq, Ord, Data, Typeable)
+    deriving (Show, Eq, Ord, Data)
 $(makeLenses ''StmtType)

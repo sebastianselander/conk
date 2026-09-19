@@ -21,7 +21,7 @@ import Data.Maybe (fromJust)
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
-    File -> 
+    File ->
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
@@ -36,9 +36,9 @@ import_ = do
     keyword "import"
     ns <- namespace
     P.choice
-        [ (\asName loc -> ImportAs loc ns asName) <$> (keyword "as" *> identifier) <*> spanEnd gs
-        , ((\symbols loc -> Import loc ns symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
-        , ImportQualified <$> spanEnd gs <*> pure ns
+        [ (\asName loc -> XImport $ ImportAs ns asName loc) <$> (keyword "as" *> identifier) <*> spanEnd gs
+        , ((\symbols loc -> ImportExplicit loc ns symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
+        , XImport . ImportQualified ns <$> spanEnd gs
         ]
         <* semicolon
 
@@ -308,13 +308,13 @@ atom =
         names <- lexeme (P.sepBy1  (identifier <|> upperIdentifier) (P.hidden (char '.')))
         let name = fromJust (viaNonEmpty last names)
         let namespace = Namespace . fmap (\(Ident name) -> name) . fromList <$> viaNonEmpty init names
-        let namespace = case viaNonEmpty init names of
+        let namespaceOpt = case viaNonEmpty init names of
                 Nothing -> Nothing
                 Just [] -> Nothing
                 Just xs -> Just (Namespace (fmap (\(Ident name) -> name) (fromList xs)))
-        
+
         info <- spanEnd gs
-        pure (Var (info, namespace) name)
+        pure (Var (info, namespaceOpt) name)
 
 literal :: Parser ExprPar
 literal =

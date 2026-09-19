@@ -4,9 +4,9 @@
 module Frontend.Parser.Types where
 
 import Data.Data (Data)
-import Relude hiding (intercalate, replicate, Type)
 import Frontend.Types
-import Names (Namespace)
+import Names (Ident, Namespace)
+import Relude hiding (Type, intercalate, replicate)
 
 data Par
     deriving (Data)
@@ -44,7 +44,13 @@ deriving instance Data PatternPar
 
 type instance XProgram Par = Namespace
 
-type instance XImport Par = SourceInfo
+data ExtraImports a
+    = ImportAs Namespace Ident a
+    | ImportQualified Namespace a
+    deriving (Eq, Ord, Show, Data)
+
+type instance XImport Par = ExtraImports SourceInfo
+type instance XImportExplicit Par = SourceInfo
 
 type instance XArg Par = SourceInfo
 
@@ -100,4 +106,3 @@ type instance XLam Par = SourceInfo
 type instance XLamArg Par = (SourceInfo, Maybe TypePar)
 
 deriving instance Data (LamArg Par)
-    

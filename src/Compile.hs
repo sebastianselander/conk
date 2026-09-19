@@ -13,14 +13,17 @@ import Backend.Llvm.Lower (llvmOut)
 import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
 import Control.Arrow (left)
+import Control.Lens (view)
 import Control.Monad.Except (liftEither)
+import Control.Monad.RWS qualified as Map
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
 import Data.Foldable1 (foldr1)
 import Data.Functor qualified as Functor
+import Data.Generics (Data, listify)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text (concat, pack, intercalate)
+import Data.Text (concat, intercalate, pack)
 import Data.Text.IO (hPutStrLn)
 import Frontend.Builtin (builtIns)
 import Frontend.Error (Report (..), TcError, TcWarning)
@@ -30,14 +33,14 @@ import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
 import Frontend.Renamer.Types (Boundedness (Imported), ProgramRn)
 import Frontend.StatementCheck (check)
-import Frontend.Tc (tc, getFuns, getCons)
+import Frontend.Tc (TypeCons (..), getFuns, getTypesAndCons, tc)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types (ProgramTc, TypeTc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
-import Names (Ident (..), combine, Namespace (Namespace))
+import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
-import System.Directory.Extra (createDirectory, removeDirectoryRecursive, doesFileExist)
+import System.Directory.Extra (createDirectory, doesFileExist, removeDirectoryRecursive, doesDirectoryExist)
 import System.Exit (ExitCode (..))
 import System.FilePath
     ( dropExtension,
@@ -50,10 +53,7 @@ import System.FilePath
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Table (DefTable (..), functions)
 import Text.Pretty.Simple (pShow)
-import Utils (File (name), zipNE, listify')
-import Data.Generics (listify, Data)
-import qualified Control.Monad.RWS as Map
-import Control.Lens (view)
+import Utils (File (name), listify', zipNE)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -93,7 +93,7 @@ compile files = do
     log (Debug Parse Nothing (toStrict $ pShow programs)) []
 
     let modules = NE.zip files programs
-    let symbolsMap = Map.map (Imported,) $ gatherSymbols modules
+    let symbolsMap = gatherSymbols modules
 
     res <- liftEither $ left report $ mapM (rename symbolsMap) programs
     let (programs, names) = second (foldr1 combine) (Functor.unzip res)
@@ -102,10 +102,16 @@ compile files = do
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
 
-    let defTable = Table builtIns 
-            (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getFuns defs))) res) 
-            mempty 
-            (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getCons defs))) res) 
+    let defTable =
+            Table
+                builtIns
+                (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getFuns defs))) res)
+                ( Map.unions
+                    $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (types (getTypesAndCons defs)))) res
+                )
+                ( Map.unions
+                    $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (cons (getTypesAndCons defs)))) res
+                )
 
     programs <- case fmap (tc defTable names) res of
         xs ->
@@ -177,7 +183,7 @@ linkObjectFiles files out = do
             hPutStrLn stderr (pack err)
             exitWith (ExitFailure code)
 
-produceExecutable :: Set Pass -> NonEmpty File -> FilePath -> IO FilePath
+produceExecutable :: HasCallStack => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
 produceExecutable dumps files out = do
     case runCompile files of
         (res, debugs) -> case res of
@@ -190,7 +196,7 @@ produceExecutable dumps files out = do
                     "" -> pure ()
                     _ -> hPutStrLn stderr debug
                 let buildDir = "build"
-                exists <- doesFileExist buildDir 
+                exists <- doesDirectoryExist buildDir
                 when exists $ removeDirectoryRecursive buildDir
                 createDirectory buildDir
                 preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))

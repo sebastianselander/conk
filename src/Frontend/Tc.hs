@@ -55,9 +55,16 @@ getFuns = listify' f
         let funTy = TyFun NoExtField (fmap typeOf args) (typeOf returnType)
          in Just (name, (funTy, info))
 
-getCons :: (Data a) => a -> [(Ident, (TypeTc, SourceInfo))]
-getCons = concat . listify' f
+data TypeCons = TypeCons
+    { types :: [(Ident, (TypeTc, SourceInfo))]
+    , cons :: [(Ident, (TypeTc, SourceInfo))]
+    }
+
+getTypesAndCons :: (Data a) => a -> TypeCons
+getTypesAndCons a = TypeCons {types = listify' h a, cons = concat (listify' f a)}
   where
+    h :: AdtRn -> Maybe (Ident, (TypeTc, SourceInfo))
+    h (Adt loc name _) = Just (name, (TyCon NoExtField name, loc))
     f :: AdtRn -> Maybe [(Ident, (TypeTc, SourceInfo))]
     f (Adt _ name cons) =
         let returnType = TyCon NoExtField name
@@ -87,8 +94,8 @@ tcDefs _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
 tcDefs _ _ (DefImport imp) = (Right (DefImport (tcImport imp)), [])
 
 tcImport :: ImportRn -> ImportTc
-tcImport (ImportQualified _ names) = ImportQualified NoExtField names
-tcImport _ = error "INTERNAL ERROR: impossible case"
+tcImport (ImportExplicit loc namespace names) =
+    ImportExplicit (error "list of types of the imported symbols") namespace names
 
 tcAdt :: AdtRn -> (AdtTc, [TcWarning])
 tcAdt (Adt loc name constructors) =
@@ -199,9 +206,9 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         (ty, _declaredAtInfo) <- case boundedness of
             Free -> lookupVar name
             Bound -> lookupVar name
-            Toplevel -> (\(ty, info) -> (ty, info)) <$> lookupFun namespace name
+            Toplevel -> lookupFun namespace name
             Constructor -> lookupCon namespace name
-            Imported -> lookupVar name
+            Imported -> lookupFun namespace name
             Builtin -> do
                 builtins <- view (defTable . builtIns)
                 case Map.lookup name =<< Map.lookup namespace builtins of
@@ -561,7 +568,10 @@ lookupVar :: (MonadState Env m) => Ident -> m (TypeTc, SourceInfo)
 lookupVar name =
     uses
         variables
-        (fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name) . Map.lookup name)
+        ( fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name)
+            . Map.lookup name
+            . traceShowId
+        )
 
 lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
 lookupCon namespace name =

@@ -26,15 +26,7 @@ instance Pretty DefRn where
     pretty (DefImport imp) = Pretty.pretty imp
 
 instance Pretty ImportRn where
-    pretty (ImportQualified _ names) =
-        "import"
-            <+> Pretty.pretty names
-    pretty (ImportAs _ names asname) =
-        "import"
-            <+> pretty names
-            <+> "as"
-            <+> pretty asname
-    pretty (Import _ namespace imports) =
+    pretty (ImportExplicit _ namespace imports) =
         "import"
             <+> Pretty.pretty namespace
             <+> Pretty.parens

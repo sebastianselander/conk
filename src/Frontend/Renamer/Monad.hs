@@ -12,6 +12,7 @@ module Frontend.Renamer.Monad
       insertVar,
       boundArg,
       boundCons,
+      allVars,
       isBuiltin,
       emptyCtx,
       emptyEnv,
@@ -38,7 +39,6 @@ import Data.List.NonEmpty
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Frontend.Builtin (builtInNames)
 import Frontend.Error
 import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Types (SourceInfo)
@@ -51,7 +51,7 @@ data Env = Env
     , _scope :: NonEmpty (Map Ident Ident)
     , _arguments :: Map Ident (Namespace, Ident)
     , _constructors :: Map Ident Namespace
-    , _importedDefinitions :: Map Ident (Boundedness, Namespace) -- symbol name to namespaced symbol name
+    , _importedDefinitions :: Map Ident Namespace -- symbol name to namespaced symbol name
     , _importName :: Map Ident Namespace -- as-name to import name (path)
     }
     deriving (Show)
@@ -60,6 +60,7 @@ data Ctx = Ctx
     { _localDefinitions :: Set Ident
     , _namespace :: Namespace
     , _builtins :: Map Namespace (Map Ident Ident)
+    , _allVars :: Map Namespace (Set Ident)
     }
     deriving (Show)
 
@@ -76,10 +77,10 @@ newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
         , MonadValidate [RnError]
         )
 
-emptyEnv :: Map Ident (Boundedness, Namespace) -> Env
+emptyEnv :: Map Ident Namespace -> Env
 emptyEnv m = Env mempty mempty (return mempty) mempty mempty m mempty
 
-emptyCtx :: Namespace -> Map Namespace (Map Ident Ident) -> Ctx
+emptyCtx :: Namespace -> Map Namespace (Map Ident Ident) -> Map Namespace (Set Ident) -> Ctx
 emptyCtx = Ctx mempty
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
@@ -101,7 +102,7 @@ boundImported :: (MonadState Env m) => Ident -> m (Maybe (Boundedness, Namespace
 boundImported name = do
     mby <- uses importedDefinitions (Map.lookup name)
     case mby of
-        Just (bind, namespace) -> pure (Just (bind, namespace, name))
+        Just namespace -> pure (Just (Imported, namespace, name))
         Nothing -> pure Nothing
 
 boundCons :: (MonadState Env m) => Ident -> m (Maybe (Namespace, Ident))

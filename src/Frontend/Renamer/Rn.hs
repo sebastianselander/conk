@@ -13,16 +13,24 @@ import Frontend.Parser.Types
 import Frontend.Renamer.Monad
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..), Names, Namespace (Namespace), mkNames)
+import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
 
-rename :: Map Ident (Boundedness, Namespace) -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename :: Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename symbolMap prg@(Program namespace _) =
-    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par))) $ rnProgram prg
+    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par)) allVars) $ rnProgram prg
   where
     resolve :: Map Namespace (Map Ident b) -> Map Namespace (Map Ident Ident)
     resolve = Map.map (Map.mapWithKey const)
+    allVars :: Map Namespace (Set Ident)
+    allVars =
+        foldr (\(k, v) acc -> Map.insertWith Set.union k (Set.singleton v) acc) mempty
+            $ listify' f prg
+      where
+        f :: ExprPar -> Maybe (Namespace, Ident)
+        f (Var (_, ns) name) = Just (fromMaybe namespace ns, name)
+        f _ = Nothing
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
@@ -31,9 +39,24 @@ rnProgram program@(Program a defs) = do
     uniqueDefs adts
     uniqueDefs functions
     let toplevelSet = Set.fromList $ fmap snd functions
-    defs <- locally localDefinitions (Set.union toplevelSet) (mapM rnDef defs)
+    defs <- locally localDefinitions (Set.union toplevelSet) (mapM rnDef (sortDefs defs))
     names <- names
     pure (Program a defs, mkNames names)
+
+sortDefs :: [Def a] -> [Def a]
+sortDefs = sortBy f
+  where
+    f :: Def a -> Def a -> Ordering
+    f (DefImport _) (DefImport _) = EQ
+    f (DefImport _) _ = LT
+    f (DefAdt _) (DefImport _) = GT
+    f (DefAdt _) (DefAdt _) = EQ
+    f (DefAdt _) _ = EQ
+    f (DefX _) (DefFn _) = LT
+    f (DefX _) (DefX _) = EQ
+    f (DefX _) _ = GT
+    f (DefFn _) (DefFn _) = EQ
+    f (DefFn _) _ = GT
 
 uniqueDefs :: (MonadValidate [RnError] m) => [(SourceInfo, Ident)] -> m ()
 uniqueDefs = go builtInNames
@@ -59,21 +82,51 @@ rnDef (DefAdt adt) = DefAdt <$> rnAdt adt
 rnDef (DefImport imp) = DefImport <$> rnImport imp
 
 {-|
-Transforms `import foo.bar (baz)` to `import foo.bar` and adds `baz -> foo.bar.baz`
-to the map of imported symbols. We then replace `baz` with `foo.bar.baz` at the usage sites
+Transforms all non-explicit imports to explicit imports.
 
-Transforms `import foo.bar as baz` to `import foo.bar` and then at the usage sites we replace `baz` with `foo.bar`
+`import foo.bar (baz)` is transformed to `import foo.bar (baz)` and `baz`
+    is transformed to `foo.bar.baz` at the usage sites.
 
-`import foo.bar` is kept as is.
+Transforms `import foo.bar as baz` to `import foo.bar (f)`
+    if `baz.f` is used somewhere in the program,
+    `baz.f` is in turn transformed to `foo.bar.f` the usage sites
+Transforms `import foo.bar` to `import foo.bar (f)`
+    if `foo.bar.f` is used somewhere in the program.
 -}
 rnImport :: ImportPar -> Gen ImportRn
-rnImport (ImportAs loc namespace name) = do
-    insertImportName name namespace
-    pure (ImportQualified loc namespace)
-rnImport (Import loc path symbols) = do
-    modifying importedDefinitions (\acc -> foldr (`Map.insert` (Toplevel, path)) acc symbols)
-    pure (ImportQualified loc path)
-rnImport (ImportQualified loc path) = pure (ImportQualified loc path)
+rnImport (ImportExplicit loc namespace symbols) = do
+    modifying importedDefinitions (\acc -> foldr (`Map.insert` namespace) acc symbols)
+    pure (ImportExplicit loc namespace symbols)
+rnImport (XImport extraimport) = rnExtraImport extraimport
+  where
+    rnExtraImport :: ExtraImports SourceInfo -> Gen ImportRn
+    rnExtraImport (ImportAs namespace name loc) = do
+        insertImportName name namespace
+        defs <- view allVars
+        let symbols =
+                sort
+                    $ Map.foldrWithKey
+                        ( \k v acc ->
+                            if Namespace (return (getText name)) == k
+                                then Set.toList v <> acc
+                                else acc
+                        )
+                        []
+                        defs
+        pure (ImportExplicit loc namespace symbols)
+    rnExtraImport (ImportQualified namespace loc) = do
+        defs <- view allVars
+        let symbols =
+                sort
+                    $ Map.foldrWithKey
+                        ( \k v acc ->
+                            if namespace == k
+                                then Set.toList v <> acc
+                                else acc
+                        )
+                        []
+                        defs
+        pure (ImportExplicit loc namespace symbols)
 
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors

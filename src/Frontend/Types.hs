@@ -55,9 +55,9 @@ deriving instance (Forall Show a) => Show (Program a)
 
 -- Definition
 data Def a
-    = DefFn (Fn a)
+    = DefImport (Import a)
     | DefAdt (Adt a)
-    | DefImport (Import a)
+    | DefFn (Fn a)
     | DefX !(XDef a)
 type family XDef a
 deriving instance (Forall Show a) => Show (Def a)
@@ -67,12 +67,14 @@ type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
 
+    -- | ImportQualified !(XImport a) Namespace -- import foo.bar.baz
+    -- | ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
+
 data Import a
-    = Import !(XImport a) Namespace [Ident] -- import foo (bar, baz)
-    | ImportQualified !(XImport a) Namespace -- import foo.bar.baz
-    | ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
-    -- Add ImportX and move ImportAs and Import to here, renamer makes them both ImportQualified
+    = ImportExplicit !(XImportExplicit a) Namespace [Ident] -- import foo (bar, baz)
+    | XImport !(XImport a)
 type family XImport a
+type family XImportExplicit a
 deriving instance (Forall Show a) => Show (Import a)
 
 data Adt a = Adt !(XAdt a) Ident [Constructor a]
@@ -278,6 +280,7 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XFn a)
     , c (XAdt a)
     , c (XImport a)
+    , c (XImportExplicit a)
     , c (XConstructor a)
     , c (XEnumCons a)
     , c (XFunCons a)

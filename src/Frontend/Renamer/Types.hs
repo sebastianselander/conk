@@ -56,7 +56,8 @@ type instance XProgram Rn = XProgram Par
 type instance XArg Rn = (SourceInfo, Namespace)
 
 type instance XDef Rn = XDef Par
-type instance XImport Rn = XImport Par
+type instance XImport Rn = DataConCantHappen
+type instance XImportExplicit Rn = SourceInfo
 type instance XFn Rn = XFn Par
 
 type instance XAdt Rn = XAdt Par
