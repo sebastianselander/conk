@@ -67,8 +67,8 @@ testFile _ (inputFiles, Just outputFile) = do
             if outputFile.content == pack out
                 then putStrLn ("Success for '" <> outputFile.name <> "'") >> pure True
                 else do
-                    Text.putStrLn $ "Expected: " <> onEmpty outputFile.content
-                    Text.putStrLn $ "Got: " <> onEmpty (pack out)
+                    Text.putStrLn $ "Expected: " <> clarifyEmpty outputFile.content
+                    Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
                     putStrLn ("Test: '" <> outputFile.name <> "' failed with error message: " <> err)
                     pure False
 testFile isEither (inputFiles, Nothing) = do
@@ -77,6 +77,6 @@ testFile isEither (inputFiles, Nothing) = do
         then putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure True
         else putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure False
 
-onEmpty :: Text -> Text
-onEmpty "" = "<empty>"
-onEmpty s = s
+clarifyEmpty :: Text -> Text
+clarifyEmpty "" = "<empty>"
+clarifyEmpty s = s
