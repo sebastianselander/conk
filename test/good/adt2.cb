@@ -4,7 +4,7 @@ type Foo {
 }
 
 def fun(a: Foo) {
-    printString("got thing of type foo\n");
+    std.printString("got thing of type foo\n");
 }
 
 def main() {

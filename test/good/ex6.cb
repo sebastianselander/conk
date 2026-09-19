@@ -1,9 +1,9 @@
 def main() {
     if !true {
-        printInt(1);
-        printString("\n");
+        std.printInt(1);
+        std.printString("\n");
     } else {
-        printInt(0);
-        printString("\n");
+        std.printInt(0);
+        std.printString("\n");
     }
 }

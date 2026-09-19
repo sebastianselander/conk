@@ -22,7 +22,7 @@ main = do
     goods <-
         ( fmap
             ( \case
-                [a, b] -> (a, b)
+                [a, b] -> (a :| [], b)
                 [a] -> error $ "missing file for: " <> pack a
                 _ -> error "incorrect amount of files"
             )
@@ -37,7 +37,7 @@ main = do
             . fmap ("test/bad/" ++)
             <$> listDirectory "test/bad"
     goods <-
-        mapM (testFile isRight) =<< mapM (mkFiles . first NE.singleton) goods
+        mapM (testFile isRight) =<< mapM mkFiles goods
     bads <- mapM (testFile isLeft . (,Nothing) . NE.singleton) =<< mapM mkFile bads
     unless (and goods && and bads) exitFailure
     exitSuccess
@@ -49,9 +49,9 @@ mkFiles (a, b) = do
     pure (afiles, Just bfile)
 
 testFile :: (forall a b. Either a b -> Bool) -> (NonEmpty File, Maybe File) -> IO Bool
-testFile _ (inputFiles, Just outputFile) = do
+testFile eitherToBool (inputFiles, Just outputFile) = do
     putStrLn "=========================================================="
-    putStrLn ("Running test for '" <> outputFile.name <> "'")
+    putStrLn ("Running test for '" <> intercalate ":" (toList (fmap (.name) inputFiles)) <> "'")
     executable <- produceExecutable mempty inputFiles "main"
     (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
     case code of
@@ -71,9 +71,9 @@ testFile _ (inputFiles, Just outputFile) = do
                     Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
                     putStrLn ("Test: '" <> outputFile.name <> "' failed with error message: " <> err)
                     pure False
-testFile isEither (inputFiles, Nothing) = do
+testFile eitherToBool (inputFiles, Nothing) = do
     let (a, _) = runCompile inputFiles
-    if isEither a
+    if eitherToBool a
         then putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure True
         else putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure False
 

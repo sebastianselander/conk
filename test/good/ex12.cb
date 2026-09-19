@@ -5,6 +5,6 @@ def apply(f: fn(int) -> int) -> fn(int) -> int {
 }
 
 def main() {
-    printInt(apply(\x -> x)(123));
-    printString("\n");
+    std.printInt(apply(\x -> x)(123));
+    std.printString("\n");
 }

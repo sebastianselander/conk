@@ -4,10 +4,10 @@ def main() {
         if x > 10 {
             break "done"
         };
-        printInt(x);
-        printString("\n");
+        std.printInt(x);
+        std.printString("\n");
         x += 1;
     };
-    printString(g);
-    printString("\n");
+    std.printString(g);
+    std.printString("\n");
 }

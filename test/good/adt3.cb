@@ -5,7 +5,7 @@ type Foo {
 
 def fun(f: fn() -> Foo) {
     let a: Foo = f();
-    printString("got thing of type foo\n");
+    std.printString("got thing of type foo\n");
 }
 
 def main() {

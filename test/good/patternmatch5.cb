@@ -7,8 +7,8 @@ def main() {
     let f: fn() -> () =
         \ -> match thing {
             Foo(foonumber) => {
-                printInt(foonumber);
-                printString("\n")
+                std.printInt(foonumber);
+                std.printString("\n")
             },
         };
     f()

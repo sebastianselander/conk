@@ -1,7 +1,7 @@
 def foo() {
     match Nil {
         Nil => {
-            printString("match\n");
+            std.printString("match\n");
         }
     }
 }

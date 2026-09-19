@@ -5,6 +5,6 @@ def foo() -> fn(int) -> int {
 }
 
 def main() {
-    printInt(foo()(123));
-    printString("\n");
+    std.printInt(foo()(123));
+    std.printString("\n");
 }

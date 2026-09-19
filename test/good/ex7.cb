@@ -5,9 +5,9 @@ def main() {
         if (i > 10) {
             break 69420
         };
-        printInt(i);
-        printString("\n");
+        std.printInt(i);
+        std.printString("\n");
     };
-    printInt(i);
-    printString("\n");
+    std.printInt(i);
+    std.printString("\n");
 }

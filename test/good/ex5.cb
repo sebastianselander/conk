@@ -4,6 +4,6 @@ def main() {
     } else {
          2
     };
-    printInt(y);
-    printString("\n");
+    std.printInt(y);
+    std.printString("\n");
 }
