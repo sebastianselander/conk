@@ -26,6 +26,7 @@ assemble (Program defs) =
         $ concatMapM assembleDecl defs
 
 assembleDecl :: Def -> IRBuilder [Decl]
+assembleDecl (Decl _namespace ty name args) = pure [Declare ty name args NoEllipsis]
 assembleDecl (StaticString name ty text) = pure [GlobalString name ty text]
 assembleDecl (Main block) = do
     clearInstructions

@@ -3,7 +3,7 @@
 module Names
     ( Ident (..),
       Names,
-      Namespace( ..),
+      Namespace (..),
       mkNames,
       getOriginalName,
       mkNamespace,
@@ -18,11 +18,11 @@ module Names
 
 import Data.Data (Data)
 import Data.Map qualified as Map
+import Data.Text (pack)
 import Generics.SYB (everywhere, mkT)
 import Prettyprinter (Pretty (..), concatWith, dot, surround)
 import Relude hiding (intercalate)
 import System.FilePath (splitDirectories)
-import Data.Text (pack)
 
 newtype Names = Names {unNames :: Map Ident Ident}
     deriving (Show, Data)

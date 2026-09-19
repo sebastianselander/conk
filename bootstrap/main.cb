@@ -1,5 +1,6 @@
 import inc (inc);
+import dec (dec);
 
 def main() {
-    std.printInt(inc(68));
+    std.printInt(dec(inc(69)));
 }

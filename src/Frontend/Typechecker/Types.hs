@@ -15,6 +15,9 @@ import Frontend.Renamer.Types (Boundedness)
 
 data Tc deriving (Data)
 
+data FnType = FnType { retType :: TypeTc, argTypes :: [TypeTc]}
+    deriving (Show, Eq, Ord, Data)
+
 type ProgramTc = Program Tc
 type DefTc = Def Tc
 type ImportTc = Import Tc
@@ -49,7 +52,7 @@ type instance XArg Tc = NoExtField
 
 type instance XDef Tc = DataConCantHappen
 type instance XImport Tc = DataConCantHappen
-type instance XImportExplicit Tc = [TypeTc]
+type instance XImportExplicit Tc = [FnType]
 type instance XFn Tc = NoExtField
 
 type instance XAdt Tc = SourceInfo
@@ -114,3 +117,4 @@ data MetaTy = AnyX
 data StmtType = StmtType { _stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
     deriving (Show, Eq, Ord, Data)
 $(makeLenses ''StmtType)
+

@@ -20,11 +20,11 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Tuple.Extra (uncurry3)
 import Frontend.Renamer.Types qualified as Rn (Boundedness (..))
-import Frontend.Typechecker.Types (stmtType, varType)
+import Frontend.Typechecker.Types (FnType (..), stmtType, varType)
 import Frontend.Typechecker.Types qualified as Tc
-import Frontend.Types (NoExtField (NoExtField), SourceInfo)
+import Frontend.Types (Import (ImportExplicit), NoExtField (NoExtField), SourceInfo)
 import Frontend.Types qualified as Tc
-import Names (Ident (..), Names, existName, insertName)
+import Names (Ident (..), Names, Namespace, existName, insertName)
 import Origin (Origin (..))
 import Relude hiding (Type, fromList, toList)
 import Utils (listify', mapWithIndexM)
@@ -135,10 +135,11 @@ dsFunction def@(Tc.Fn NoExtField name args returnType (Tc.Block (_info, _) stmts
 dsDef :: Tc.DefTc -> DsM [Def]
 dsDef (Tc.DefFn fn) = pure <$> dsFunction fn
 dsDef (Tc.DefAdt adt) = dsAdt adt
-dsDef (Tc.DefImport imp) =
-    error
-        "Do `declare i32 @foo(i64)` for all used functions from the import. \
-        \ Perhaps the import should not be `ImportQualified`, but rather `ImportExplicit`??"
+dsDef (Tc.DefImport (ImportExplicit tys namespace names)) = zipWithM (declare namespace) tys names
+  where
+    declare :: (Monad m) => Namespace -> FnType -> Ident -> m Def
+    declare namespace fnType name =
+        Decl namespace <$> dsType fnType.retType <*> pure name <*> mapM dsType fnType.argTypes
 
 dsAdt :: Tc.AdtTc -> DsM [Def]
 dsAdt (Tc.Adt _loc name constructors) = do

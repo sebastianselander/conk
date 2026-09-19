@@ -31,7 +31,7 @@ emptyInfo :: SourceInfo
 emptyInfo = SourceInfo {sourceFile = "", spanInfo = emptySpan}
 
 emptySpan :: Span
-emptySpan = Span (mkPos 0, mkPos 0) (mkPos 0, mkPos 0)
+emptySpan = Span (mkPos 1, mkPos 1) (mkPos 1, mkPos 1)
 
 instance Show Span where
     show Span {start, end} =

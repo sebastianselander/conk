@@ -16,7 +16,7 @@ updateDecls f (IrMain decls) = IrMain (f decls)
 updateDecls f (IrLib decls) = IrLib (f decls)
 
 data Ellipsis = Ellipsis | NoEllipsis
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Data)
 
 -- These are declared in the order we want them defined in the ir file
 data Decl
