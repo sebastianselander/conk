@@ -622,10 +622,7 @@ lookupFun namespace name =
     views
         (Ctx.defTable . DefTable.functions)
         ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
-            . Map.lookup name
-            . fromMaybe
-                (error $ "INTERNAL ERROR: Unable to find namespace: " <> show namespace <> "." <> show name)
-            . Map.lookup namespace
+            . (Map.lookup name <=< Map.lookup namespace)
         )
 
 class TypeOf a where

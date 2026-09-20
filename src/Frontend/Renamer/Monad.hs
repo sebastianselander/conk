@@ -107,7 +107,8 @@ boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
 boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
 
 -- | Returns the expanded namespace of the symbol
-boundImported :: (MonadState Env m) => Namespace -> Ident -> m (Maybe (Boundedness, Namespace, Ident))
+boundImported ::
+    (MonadState Env m) => Namespace -> Ident -> m (Maybe (Boundedness, Namespace, Ident))
 boundImported namespaceToExlucde name = do
     mby <- uses importedDefinitions (Map.lookup name)
     case mby of
@@ -125,7 +126,7 @@ isBuiltin namespace name =
     fmap (namespace,)
         <$> views
             builtins
-            (Map.lookup name . fromMaybe (error "") . Map.lookup namespace)
+            (Map.lookup name <=< Map.lookup namespace)
 
 {-| Checks if a variable is bound in the closest scope
   | It does *not* check if a variable is completely unbound
