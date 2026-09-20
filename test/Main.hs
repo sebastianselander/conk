@@ -21,6 +21,9 @@ import System.FilePath (takeExtension, (</>))
 import System.Process (proc, readCreateProcessWithExitCode)
 import Utils (File (..), conkFileExtension)
 
+newtype Result = Result Bool
+    deriving (Show)
+
 data TestCase = TestCase
     { inputFiles :: NonEmpty File
     , outFile :: Maybe File
@@ -77,8 +80,6 @@ readDirectory testType dir = do
     outputFile <- mapM (\path -> File path . decodeUtf8 <$> readFileBS (dir </> path)) outputFilepath
     pure (TestCase (fromList inputFiles) outputFile dir testType)
 
-newtype Result = Result Bool
-
 consumeResult :: Result -> IO Bool
 consumeResult = pure . coerce
 
@@ -86,8 +87,9 @@ runTestCase :: TestCase -> IO Result
 runTestCase
     TestCase
         { inputFiles = inputFiles
-        , outFile = Just outFile
+        , outFile = outFile
         , directoryPath = directoryPath
+        , testType = Good
         } =
         do
             putStrLn "=========================================================="
@@ -108,18 +110,20 @@ runTestCase
                             )
                             >> pure (Result False)
                     ExitSuccess -> do
-                        if outFile.content == pack out
-                            then putStrLn ("Success for '" <> outFile.name <> "'") >> pure (Result True)
-                            else do
-                                Text.putStrLn $ "Expected: " <> clarifyEmpty outFile.content
-                                Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
-                                putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
-                                pure (Result False)
-runTestCase TestCase {inputFiles = inputFiles, outFile = Nothing, testType = testType} = do
+                        case outFile of
+                            Nothing -> putStrLn "Missing out file" >> Relude.exitFailure
+                            Just outFile -> do
+                                if outFile.content == pack out
+                                    then putStrLn ("Success for '" <> outFile.name <> "'") >> pure (Result True)
+                                    else do
+                                        Text.putStrLn $ "Expected: " <> clarifyEmpty outFile.content
+                                        Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
+                                        putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
+                                        pure (Result False)
+runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType} = do
     let (a, _) = runCompile inputFiles
     case (a, testType) of
         (Left _, Bad) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
-        (Right _, Good) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
         _ -> putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure (Result False)
 
 clarifyEmpty :: Text -> Text
