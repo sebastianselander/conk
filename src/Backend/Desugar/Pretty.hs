@@ -155,7 +155,9 @@ pExpr (Typed _ expr) = go expr
         ExtractFree bindName envName index ->
             "let" <+> pretty bindName <+> "=" <+> pretty envName <> brackets (show index)
         Match scrutinee arms catch ->
-            "match" <+> pExpr scrutinee <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
+            "match"
+                <+> pExpr scrutinee
+                <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
         ToStderrExit txt -> "exit: " <> pretty txt
 
 pCatch :: Catch -> Doc ann

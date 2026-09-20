@@ -1,8 +1,0 @@
-def foo(x: int, y: int) -> int {
-    y + y
-}
-
-def main() {
-    printInt(foo(0,2));
-    printString("\n");
-}

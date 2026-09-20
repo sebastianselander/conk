@@ -12,16 +12,17 @@ import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
 import Control.Monad.Writer (Writer, runWriter)
 import Data.Data (Data)
 import Data.Map.Strict qualified as Map
-import Frontend.Builtin (builtIns)
 import Frontend.Error
 import Frontend.Renamer.Types
-import Frontend.Typechecker.Ctx (Ctx)
+import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
 import Frontend.Types
-import Names (Ident, Names, getOriginalName')
-import Relude hiding (Any, intercalate)
+import Names (Ident, Names, Namespace, getOriginalName')
+import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
+import Table (DefTable, builtIns, functions)
+import Table qualified as DefTable
 import Utils (chain, listify')
 
 newtype Env = Env
@@ -30,7 +31,6 @@ newtype Env = Env
     deriving (Show)
 
 $(makeLenses ''Env)
-
 newtype TcM a = Tc
     { runTc ::
         StateT Env (ReaderT Ctx (ValidateT [TcError] (Writer [TcWarning]))) a
@@ -55,9 +55,16 @@ getFuns = listify' f
         let funTy = TyFun NoExtField (fmap typeOf args) (typeOf returnType)
          in Just (name, (funTy, info))
 
-getCons :: (Data a) => a -> [(Ident, (TypeTc, SourceInfo))]
-getCons = concat . listify' f
+data TypeCons = TypeCons
+    { types :: [(Ident, (TypeTc, SourceInfo))]
+    , cons :: [(Ident, (TypeTc, SourceInfo))]
+    }
+
+getTypesAndCons :: (Data a) => a -> TypeCons
+getTypesAndCons a = TypeCons {types = listify' h a, cons = concat (listify' f a)}
   where
+    h :: AdtRn -> Maybe (Ident, (TypeTc, SourceInfo))
+    h (Adt loc name _) = Just (name, (TyCon NoExtField name, loc))
     f :: AdtRn -> Maybe [(Ident, (TypeTc, SourceInfo))]
     f (Adt _ name cons) =
         let returnType = TyCon NoExtField name
@@ -69,24 +76,57 @@ getCons = concat . listify' f
             FunCons loc name argTys ->
                 (name, (TyFun NoExtField (fmap typeOf argTys) returnType, loc))
 
-tc :: Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
-tc names (Program NoExtField defs) =
-    case first partitionEithers $ unzip $ fmap (tcDefs names funTable conTable) defs of
+tc ::
+    DefTable TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
+tc defTable names (Program _namespace defs) =
+    case first partitionEithers $ unzip $ fmap (tcDefs names defTable) defs of
         (([], defs), warnings) -> (Right $ Program NoExtField defs, mconcat warnings)
         ((errs, _), warnings) -> (Left $ mconcat errs, mconcat warnings)
-  where
-    funTable = Map.fromList $ getFuns defs
-    conTable = Map.fromList $ getCons defs
 
 tcDefs ::
     Names ->
-    Map Ident (TypeTc, SourceInfo) ->
-    Map Ident (TypeTc, SourceInfo) ->
+    DefTable TypeTc SourceInfo ->
     DefRn ->
     (Either [TcError] DefTc, [TcWarning])
-tcDefs names funTable conTable (DefFn fn) =
-    first (fmap DefFn) $ tcFunction names funTable conTable fn
-tcDefs _ _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
+tcDefs names table (DefFn fn) =
+    first (fmap DefFn) $ tcFunction names table fn
+tcDefs _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
+tcDefs _ table (DefImport imp) = (Right (DefImport (tcImport table imp)), [])
+
+tcImport :: DefTable TypeTc SourceInfo -> ImportRn -> ImportTc
+tcImport table (ImportExplicit _ namespace names) =
+    let funs :: Map Ident (TypeTc, SourceInfo)
+        funs =
+            fromMaybe
+                ( error
+                    $ "Failed finding namespace `"
+                    <> show namespace
+                    <> "` in table: "
+                    <> show (view functions table)
+                )
+                $ Map.lookup namespace (view functions table)
+        tys :: [(TypeTc, SourceInfo)]
+        tys =
+            fmap
+                ( \symbol ->
+                    ( \x ->
+                        fromMaybe
+                            ( error
+                                $ "Failed finding symbol `"
+                                <> show symbol
+                                <> "`in imported program: "
+                                <> show x
+                            )
+                            x
+                    )
+                        (Map.lookup symbol funs)
+                )
+                names
+        mkFnType :: (TypeTc, SourceInfo) -> FnType
+        mkFnType (ty, _) = case ty of
+            TyFun _ args ret -> FnType ret args
+            ty -> error $ "Imported symbol is not a function: " <> show ty
+     in ImportExplicit (fmap mkFnType tys) namespace names
 
 tcAdt :: AdtRn -> (AdtTc, [TcWarning])
 tcAdt (Adt loc name constructors) =
@@ -101,11 +141,10 @@ inferConstructor ty = \case
 
 tcFunction ::
     Names ->
-    Map Ident (TypeTc, SourceInfo) ->
-    Map Ident (TypeTc, SourceInfo) ->
+    DefTable TypeTc SourceInfo ->
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
-tcFunction names funTable conTable fun@(Fn _ _ args rt _) =
+tcFunction names defTable fun@(Fn _ _ args rt _) =
     let varTable =
             foldr
                 ( uncurry Map.insert
@@ -113,14 +152,14 @@ tcFunction names funTable conTable fun@(Fn _ _ args rt _) =
                             ( name
                             ,
                                 ( typeOf ty
-                                , info
+                                , fst info
                                 )
                             )
                       )
                 )
                 mempty
                 args
-        ctx = Ctx.Ctx (Map.union builtIns funTable) conTable (typeOf rt) fun [] names
+        ctx = Ctx.Ctx defTable (typeOf rt) fun [] names
         env = Env varTable
      in run ctx env $ go fun
   where
@@ -149,7 +188,9 @@ tcBlock expectedTy (Block info statements tailExpression) = do
     stmts <- mapM infStmt statements
     expr <- case tailExpression of
         Nothing -> do
-            unless (expectedTy == TyLit NoExtField Unit) (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
+            unless
+                (expectedTy == TyLit NoExtField Unit)
+                (tyExpectedGot info [expectedTy] (TyLit NoExtField Unit))
             pure Nothing
         Just tail -> Just <$> tcExpr expectedTy tail
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
@@ -192,13 +233,19 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
     Lit info lit ->
         let (ty, b) = infLit lit
          in pure $ Lit (info, ty) b
-    Var (info, bind) name -> do
-        (ty, _declaredAtInfo) <- case bind of
+    Var (info, namespace, boundedness) name -> do
+        (ty, _declaredAtInfo) <- case boundedness of
             Free -> lookupVar name
             Bound -> lookupVar name
-            Toplevel -> (\(ty, info) -> (ty, info)) <$> lookupFun name
-            Constructor -> lookupCon name
-        pure $ Var (info, ty, bind) name
+            Toplevel -> lookupFun namespace name
+            Constructor -> lookupCon namespace name
+            Imported -> lookupFun namespace name
+            Builtin -> do
+                builtins <- view (defTable . builtIns)
+                case Map.lookup name =<< Map.lookup namespace builtins of
+                    Just res -> pure res
+                    Nothing -> error "INTERNAL ERROR: Missing builtin"
+        pure $ Var (info, ty, boundedness) name
     Prefix info Neg expr -> do
         expr <- tcExpr (TyLit NoExtField Int) expr
         pure $ Prefix (info, TyLit NoExtField Int) Neg expr
@@ -250,7 +297,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         let ty = typeOf expr
         insertVar name ty info
         pure $ Let (StmtType (TyLit NoExtField Unit) ty info) name expr
-    Ass (info, bind) name op expr -> do
+    Ass (info, bind, _namespace) name op expr -> do
         (ty, info) <- case bind of
             Toplevel ->
                 assignNonVariable @TcM info
@@ -324,7 +371,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                 pure (typeOf x)
         pure $ Loop (info, ty) block
     Lam info args body -> do
-        let insertArg (LamArg (info, ty) name) = do
+        let insertArg (LamArg (info, ty, _namespace) name) = do
                 let ty' = fmap typeOf ty
                 ty <- maybe (Any <$ typeMustBeKnown info name) pure ty'
                 insertVar name ty info
@@ -361,12 +408,12 @@ tcPat pattype currentPattern = case currentPattern of
     PVar loc varName -> do
         insertVar varName pattype loc
         pure $ PVar (loc, pattype) varName
-    PEnumCon loc conName -> do
-        (ty, _declLoc) <- lookupCon conName
+    PEnumCon (loc, namespace) conName -> do
+        (ty, _declLoc) <- lookupCon namespace conName
         unify' loc pattype ty
         pure $ PEnumCon (loc, ty) conName
-    PFunCon loc conName pats -> do
-        (ty, _declLoc) <- lookupCon conName
+    PFunCon (loc, namespace) conName pats -> do
+        (ty, _declLoc) <- lookupCon namespace conName
         case ty of
             TyFun NoExtField argtys retty
                 | length argtys == length pats -> do
@@ -389,7 +436,7 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         let literal = Lit (info, ty) lit'
         void $ unify info expectedTy literal
         pure literal
-    Var (info, _) _ -> do
+    Var (info, _namespace, _) _ -> do
         expr <- infExpr currentExpr
         unify info expectedTy expr
         pure expr
@@ -403,7 +450,9 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
             Neg -> do
                 expr <- infExpr expr
                 let ty = typeOf expr
-                unless (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double]) (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
+                unless
+                    (ty `elem` [TyLit NoExtField Int, TyLit NoExtField Double])
+                    (tyExpectedGot info [TyLit NoExtField Int, TyLit NoExtField Double] ty)
                 pure $ Prefix (info, ty) op expr
     BinOp info l op r -> do
         let typeOfOp = operatorType op
@@ -423,8 +472,8 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         unify' info expectedTy (TyLit NoExtField Unit)
         insertVar name ty info
         pure $ Let (StmtType (TyLit NoExtField Unit) ty info) name expr
-    Ass (info, bind) name op expr -> do
-        expr <- infExpr (Ass (info, bind) name op expr)
+    Ass (info, bind, namespace) name op expr -> do
+        expr <- infExpr (Ass (info, bind, namespace) name op expr)
         unify info expectedTy expr
         pure expr
     Ret info expr -> do
@@ -477,7 +526,7 @@ unifyLambdaArgs ::
     m [LamArgTc]
 unifyLambdaArgs [] = pure []
 unifyLambdaArgs
-    ((expectedType, LamArg (loc, mbArgumentType) argumentName) : xs) = do
+    ((expectedType, LamArg (loc, mbArgumentType, _namespace) argumentName) : xs) = do
         mapM_ (unify loc expectedType) mbArgumentType
         let (LamArg ty name) = LamArg @Tc expectedType argumentName
         insertVar name ty loc
@@ -509,30 +558,30 @@ operatorReturnType inputTy = \case
     Add -> inputTy
     Sub -> inputTy
     Mod -> inputTy
-    Or -> (TyLit NoExtField Bool)
-    And -> (TyLit NoExtField Bool)
-    Lt -> (TyLit NoExtField Bool)
-    Gt -> (TyLit NoExtField Bool)
-    Lte -> (TyLit NoExtField Bool)
-    Gte -> (TyLit NoExtField Bool)
-    Eq -> (TyLit NoExtField Bool)
-    Neq -> (TyLit NoExtField Bool)
+    Or -> TyLit NoExtField Bool
+    And -> TyLit NoExtField Bool
+    Lt -> TyLit NoExtField Bool
+    Gt -> TyLit NoExtField Bool
+    Lte -> TyLit NoExtField Bool
+    Gte -> TyLit NoExtField Bool
+    Eq -> TyLit NoExtField Bool
+    Neq -> TyLit NoExtField Bool
 
 operatorType :: BinOp -> TypeTc
 operatorType = \case
-    Mul -> (TyLit NoExtField Int)
-    Div -> (TyLit NoExtField Int)
-    Add -> (TyLit NoExtField Int)
-    Sub -> (TyLit NoExtField Int)
-    Mod -> (TyLit NoExtField Int)
-    Or -> (TyLit NoExtField Bool)
-    And -> (TyLit NoExtField Bool)
-    Lt -> (TyLit NoExtField Int)
-    Gt -> (TyLit NoExtField Int)
-    Lte -> (TyLit NoExtField Int)
-    Gte -> (TyLit NoExtField Int)
-    Eq -> (TyLit NoExtField Int)
-    Neq -> (TyLit NoExtField Int)
+    Mul -> TyLit NoExtField Int
+    Div -> TyLit NoExtField Int
+    Add -> TyLit NoExtField Int
+    Sub -> TyLit NoExtField Int
+    Mod -> TyLit NoExtField Int
+    Or -> TyLit NoExtField Bool
+    And -> TyLit NoExtField Bool
+    Lt -> TyLit NoExtField Int
+    Gt -> TyLit NoExtField Int
+    Lte -> TyLit NoExtField Int
+    Gte -> TyLit NoExtField Int
+    Eq -> TyLit NoExtField Int
+    Neq -> TyLit NoExtField Int
 
 infLit :: LitRn -> (TypeTc, LitTc)
 infLit = \case
@@ -547,16 +596,34 @@ insertVar :: (MonadState Env m) => Ident -> TypeTc -> SourceInfo -> m ()
 insertVar name ty info = modifying variables (Map.insert name (ty, info))
 
 lookupVar :: (MonadState Env m) => Ident -> m (TypeTc, SourceInfo)
-lookupVar name = uses variables (fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name) . Map.lookup name)
+lookupVar name =
+    uses
+        variables
+        ( fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name)
+            . Map.lookup name
+        )
 
-lookupCon :: (MonadReader Ctx m) => Ident -> m (TypeTc, SourceInfo)
-lookupCon name = views Ctx.constructors (fromJust . Map.lookup name)
+lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupCon namespace name =
+    views
+        Ctx.defTable
+        ( fromJust
+            . Map.lookup name
+            . fromJust
+            . Map.lookup namespace
+            . view DefTable.constructors
+        )
 
 lookupVarTy :: (MonadState Env m) => Ident -> m TypeTc
 lookupVarTy = fmap fst . lookupVar
 
-lookupFun :: (MonadReader Ctx m) => Ident -> m (TypeTc, SourceInfo)
-lookupFun name = views Ctx.functions (fromJust . Map.lookup name)
+lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupFun namespace name =
+    views
+        (Ctx.defTable . DefTable.functions)
+        ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
+            . (Map.lookup name <=< Map.lookup namespace)
+        )
 
 class TypeOf a where
     typeOf :: a -> TypeTc
@@ -599,10 +666,10 @@ instance TypeOf MatchArmTc where
     typeOf (MatchArm _ _ body) = typeOf body
 
 instance TypeOf ArgTc where
-  typeOf (Arg _ _ ty) = ty
+    typeOf (Arg _ _ ty) = ty
 
 instance TypeOf ArgRn where
-  typeOf (Arg _ _ ty) = typeOf ty
+    typeOf (Arg _ _ ty) = typeOf ty
 
 unify ::
     (MonadReader Ctx m, MonadState Env m, MonadValidate [TcError] m, TypeOf a) =>

@@ -3,21 +3,35 @@
 
 module Frontend.Renamer.Rn (rename) where
 
-import Control.Lens (locally)
+import Control.Lens (locally, modifying, view)
 import Control.Monad.Validate (MonadValidate)
+import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Frontend.Builtin (builtInNames)
+import Frontend.Builtin (builtInNames, builtIns)
 import Frontend.Error
 import Frontend.Parser.Types
 import Frontend.Renamer.Monad
 import Frontend.Renamer.Types
 import Frontend.Types
-import Names (Ident (..), Names, mkNames)
-import Relude
+import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
+import Relude hiding (intercalate)
 import Utils (listify')
 
-rename :: ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename = runGen emptyEnv emptyCtx . rnProgram
+rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename namespaces symbolMap prg@(Program namespace _) =
+    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par)) allVars namespaces)
+        $ rnProgram prg
+  where
+    resolve :: Map Namespace (Map Ident b) -> Map Namespace (Map Ident Ident)
+    resolve = Map.map (Map.mapWithKey const)
+    allVars :: Map Namespace (Set Ident)
+    allVars =
+        foldr (\(k, v) acc -> Map.insertWith Set.union k (Set.singleton v) acc) mempty
+            $ listify' f prg
+      where
+        f :: ExprPar -> Maybe (Namespace, Ident)
+        f (Var (_, ns) name) = Just (fromMaybe namespace ns, name)
+        f _ = Nothing
 
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
@@ -26,9 +40,24 @@ rnProgram program@(Program a defs) = do
     uniqueDefs adts
     uniqueDefs functions
     let toplevelSet = Set.fromList $ fmap snd functions
-    defs <- locally definitions (Set.union toplevelSet) (mapM rnDef defs)
+    defs <- locally localDefinitions (Set.union toplevelSet) (mapM rnDef (sortDefs defs))
     names <- names
     pure (Program a defs, mkNames names)
+
+sortDefs :: [Def a] -> [Def a]
+sortDefs = sortBy f
+  where
+    f :: Def a -> Def a -> Ordering
+    f (DefImport _) (DefImport _) = EQ
+    f (DefImport _) _ = LT
+    f (DefAdt _) (DefImport _) = GT
+    f (DefAdt _) (DefAdt _) = EQ
+    f (DefAdt _) _ = EQ
+    f (DefX _) (DefFn _) = LT
+    f (DefX _) (DefX _) = EQ
+    f (DefX _) _ = GT
+    f (DefFn _) (DefFn _) = EQ
+    f (DefFn _) _ = GT
 
 uniqueDefs :: (MonadValidate [RnError] m) => [(SourceInfo, Ident)] -> m ()
 uniqueDefs = go builtInNames
@@ -51,6 +80,60 @@ rnFunction (Fn pos name arguments returnType block) = do
 rnDef :: DefPar -> Gen DefRn
 rnDef (DefFn fn) = DefFn <$> rnFunction fn
 rnDef (DefAdt adt) = DefAdt <$> rnAdt adt
+rnDef (DefImport imp) = DefImport <$> rnImport imp
+
+{-|
+Transforms all non-explicit imports to explicit imports.
+
+`import foo.bar (baz)` is transformed to `import foo.bar (baz)` and `baz`
+    is transformed to `foo.bar.baz` at the usage sites.
+
+Transforms `import foo.bar as baz` to `import foo.bar (f)`
+    if `baz.f` is used somewhere in the program,
+    `baz.f` is in turn transformed to `foo.bar.f` the usage sites
+Transforms `import foo.bar` to `import foo.bar (f)`
+    if `foo.bar.f` is used somewhere in the program.
+-}
+rnImport :: ImportPar -> Gen ImportRn
+rnImport (ImportExplicit loc namespace symbols) = do
+    exist <- doesNamespaceExist namespace
+    unless exist $ unboundImport loc namespace
+    modifying importedDefinitions (\acc -> foldr (`Map.insert` namespace) acc symbols)
+    pure (ImportExplicit loc namespace symbols)
+rnImport (XImport extraimport) = rnExtraImport extraimport
+  where
+    rnExtraImport :: ExtraImports SourceInfo -> Gen ImportRn
+    rnExtraImport (ImportAs namespace name loc) = do
+        exist <- doesNamespaceExist namespace
+        unless exist $ unboundImport loc namespace
+        insertImportName name namespace
+        defs <- view allVars
+        let symbols =
+                sort
+                    $ Map.foldrWithKey
+                        ( \k v acc ->
+                            if Namespace (return (getText name)) == k
+                                then Set.toList v <> acc
+                                else acc
+                        )
+                        []
+                        defs
+        pure (ImportExplicit loc namespace symbols)
+    rnExtraImport (ImportQualified namespace loc) = do
+        exist <- doesNamespaceExist namespace
+        unless exist $ unboundImport loc namespace
+        defs <- view allVars
+        let symbols =
+                sort
+                    $ Map.foldrWithKey
+                        ( \k v acc ->
+                            if namespace == k
+                                then Set.toList v <> acc
+                                else acc
+                        )
+                        []
+                        defs
+        pure (ImportExplicit loc namespace symbols)
 
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors
@@ -76,14 +159,27 @@ rnStatement = \case
 rnExpr :: ExprPar -> Gen ExprRn
 rnExpr = \case
     Lit info lit -> Lit info <$> rnLit lit
-    Var info variable -> do
-        (bind, name) <-
-            maybe ((Free, Ident "unbound") <$ unboundVariable info variable) pure
+    Var (info, ns) variable -> do
+        namespace <- view namespace
+        (bind, (namespace, name)) <-
+            maybe
+                ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
+                pure
+                =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported namespace variable) (pure . Just)
                 =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
-                =<< maybe (fmap (Toplevel,) <$> boundFun variable) (pure . Just)
-                =<< maybe (fmap (Free,) <$> boundArg variable) (pure . Just)
-                =<< boundVar variable
-        pure $ Var (info, bind) name
+                =<< maybe
+                    ( case ns of
+                        Just namespace -> fmap (Builtin,) <$> isBuiltin namespace variable
+                        Nothing -> pure Nothing
+                    )
+                    (pure . Just)
+                =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
+                =<< ( maybe
+                        (fmap (Free,) <$> boundArg variable)
+                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                        =<< boundVar variable
+                    )
+        pure $ Var (info, namespace, bind) name
     Prefix info op expr -> Prefix info op <$> rnExpr expr
     BinOp info l op r -> do
         l <- rnExpr l
@@ -99,12 +195,16 @@ rnExpr = \case
         ty <- mapM rnType ty
         pure $ Let (info, ty) name' expr
     Ass info variable op expr -> do
-        (bind, name) <-
-            maybe ((Free, Ident "unbound") <$ unboundVariable info variable) pure
-                =<< maybe (fmap (Free,) <$> boundArg variable) (pure . Just)
-                =<< boundVar variable
+        namespace <- view namespace
+        (bind, (namespace, name)) <-
+            maybe ((Free, (namespace, Ident "unbound")) <$ unboundVariable info variable) pure
+                =<< ( maybe
+                        (fmap (Free,) <$> boundArg variable)
+                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                        =<< boundVar variable
+                    )
         expr <- rnExpr expr
-        pure (Ass (info, bind) name op expr)
+        pure (Ass (info, bind, namespace) name op expr)
     Ret a b -> do
         b' <- mapM rnExpr b
         pure $ Ret a b'
@@ -146,10 +246,13 @@ rnPattern = fmap snd . go mempty
             when (varName `elem` seen) (conflictingDefinitionArgument loc varName)
             name <- insertVar varName
             pure (varName : seen, PVar loc name)
-        PEnumCon loc conName -> pure ([], PEnumCon loc conName)
+        PEnumCon loc conName -> do
+            ns <- view namespace
+            pure ([], PEnumCon (loc, ns) conName)
         PFunCon loc conName pats -> do
+            ns <- view namespace
             (seen, pats) <- go' seen pats
-            pure (seen, PFunCon loc conName pats)
+            pure (seen, PFunCon (loc, ns) conName pats)
           where
             go' :: [Ident] -> [PatternPar] -> Gen ([Ident], [PatternRn])
             go' seen [] = pure (seen, [])
@@ -158,20 +261,22 @@ rnPattern = fmap snd . go mempty
                 (seen'', pats) <- go' (seen <> seen') xs
                 pure (seen <> seen' <> seen'', pat : pats)
 
-rnLamArgs :: (MonadState Env m, MonadValidate [RnError] m) => [LamArgPar] -> m [LamArgRn]
+rnLamArgs ::
+    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [LamArgPar] -> m [LamArgRn]
 rnLamArgs = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
-        (MonadState Env m, MonadValidate [RnError] m) =>
+        (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
         ([Ident], [LamArgRn]) ->
         LamArgPar ->
         m ([Ident], [LamArgRn])
     f (seen, acc) (LamArg (info, ty) name) = do
+        namespace <- view namespace
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
-        name <- insertArg name
+        (namespace, name) <- insertArg namespace name
         ty <- mapM rnType ty
-        pure (seen', LamArg (info, ty) name : acc)
+        pure (seen', LamArg (info, ty, namespace) name : acc)
 
 rnLit :: LitPar -> Gen LitRn
 rnLit = \case
@@ -194,20 +299,21 @@ getFunctionNames = listify' fnName
     fnName :: FnPar -> Maybe (SourceInfo, Ident)
     fnName (Fn info name _ _ _) = Just (info, name)
 
-rnArgs :: (MonadState Env m, MonadValidate [RnError] m) => [ArgPar] -> m [ArgRn]
+rnArgs :: (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [ArgPar] -> m [ArgRn]
 rnArgs = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
-        (MonadState Env m, MonadValidate [RnError] m) =>
+        (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
         ([Ident], [ArgRn]) ->
         ArgPar ->
         m ([Ident], [ArgRn])
     f (seen, acc) (Arg info name ty) = do
+        namespace <- view namespace
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
-        name <- insertArg name
+        (namespace, name) <- insertArg namespace name
         ty <- rnType ty
-        pure (seen', Arg info name ty : acc)
+        pure (seen', Arg (info, namespace) name ty : acc)
 
 rnType :: (Monad m) => TypePar -> m TypeRn
 rnType = pure . coerceType

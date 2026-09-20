@@ -2,7 +2,7 @@ module Backend.Desugar.Types where
 
 import Backend.Types (Type (..))
 import Data.Data (Data)
-import Names (Ident)
+import Names (Ident, Namespace)
 import Origin (Origin (..))
 import Relude hiding (Type)
 
@@ -10,7 +10,8 @@ newtype Program = Program [Def]
     deriving (Show, Eq, Ord, Data)
 
 data Def
-    = Fn !Origin Ident [Arg] Type [TyExpr]
+    = Decl Namespace Type Ident [Type]
+    | Fn !Origin Ident [Arg] Type [TyExpr]
     | Main [TyExpr]
     | StaticString Ident Type Text
     | TypeSyn Ident Type

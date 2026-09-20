@@ -4,18 +4,19 @@
 
 module Frontend.Renamer.Pretty where
 
+import Frontend.Parser.Utils (namespaceSeparator)
 import Frontend.Renamer.Types
 import Frontend.Types
 import Names (Ident (..))
-import Prettyprinter (Doc, Pretty, (<+>))
+import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
-import Relude
+import Relude hiding (intercalate)
 
 prettyRenamer :: (Pretty a) => a -> Text
 prettyRenamer = show . Pretty.pretty
 
 instance Pretty ProgramRn where
-    pretty (Program NoExtField defs) =
+    pretty (Program _ defs) =
         Pretty.concatWith
             (Pretty.surround (Pretty.hardline <> Pretty.hardline))
             (fmap Pretty.pretty defs)
@@ -23,6 +24,14 @@ instance Pretty ProgramRn where
 instance Pretty DefRn where
     pretty (DefFn fn) = Pretty.pretty fn
     pretty (DefAdt adt) = Pretty.pretty adt
+    pretty (DefImport imp) = Pretty.pretty imp
+
+instance Pretty ImportRn where
+    pretty (ImportExplicit _ namespace imports) =
+        "import"
+            <+> Pretty.pretty namespace
+            <+> Pretty.parens
+                (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap pretty imports))
 
 instance Pretty AdtRn where
     pretty (Adt _ name cons) =
@@ -84,7 +93,7 @@ instance Pretty StmtRn where
     pretty (SExpr NoExtField expr) = Pretty.pretty expr <> Pretty.semi
 
 instance Pretty ArgRn where
-    pretty (Arg _ name ty) = Pretty.pretty name <> ":" <+> Pretty.pretty ty
+    pretty (Arg (_, namespace) name ty) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
 instance Pretty TypeRn where
     pretty = prettyType1
@@ -148,7 +157,7 @@ prettyExpr7 :: ExprRn -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var _ name) = Pretty.pretty name
+prettyExpr7 (Var (_, namespace, _) name) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))
@@ -199,10 +208,11 @@ instance Pretty PatternRn where
                     )
 
 instance Pretty LamArgRn where
-    pretty (LamArg (_, Nothing) name) =
-        Pretty.pretty name
-    pretty (LamArg (_, Just ty) name) =
-        Pretty.parens $ Pretty.pretty name <> ":" <+> Pretty.pretty ty
+    pretty (LamArg (_, Nothing, namespace) name) =
+        Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
+    pretty (LamArg (_, Just ty, namespace) name) =
+        Pretty.parens $ Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":"
+            <+> Pretty.pretty ty
 
 instance Pretty LitRn where
     pretty lit = case lit of

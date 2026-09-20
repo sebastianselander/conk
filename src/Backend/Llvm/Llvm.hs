@@ -8,24 +8,25 @@ import Backend.Llvm.Monad
 import Backend.Llvm.Prelude (exitFailure, printString)
 import Backend.Llvm.Types
 import Backend.Types
-import Control.Lens.Getter (view, use)
+import Control.Lens.Getter (use, view)
 import Control.Lens.Setter (locally)
 import Control.Monad.Extra (concatMapM)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Text qualified as Text
+import Data.Tuple.Extra (fst3)
 import Names (Ident (..))
 import Origin (Origin (..))
 import Relude hiding (Type, and, div, exitFailure, null, or, rem)
-import Utils (mapWithIndexM, catMaybesSnd)
+import Utils (catMaybesSnd, mapWithIndexM)
 
 assemble :: Program -> Ir
 assemble (Program defs) =
-    Ir
+    IrMain
         . sortBy (comparing Down)
         <$> runAssembler
         $ concatMapM assembleDecl defs
 
 assembleDecl :: Def -> IRBuilder [Decl]
+assembleDecl (Decl _namespace ty name args) = pure [Declare ty name args NoEllipsis]
 assembleDecl (StaticString name ty text) = pure [GlobalString name ty text]
 assembleDecl (Main block) = do
     clearInstructions
@@ -255,16 +256,18 @@ assembleExpr (Typed taggedType expr) =
                     val <- load ty ptr
                     store val var
                 let isBreak = case NonEmpty.last body of
-                                Typed _ Break -> True
-                                _ -> False
+                        Typed _ Break -> True
+                        _ -> False
                 operand <- NonEmpty.last <$> mapM assembleExpr body
-                comeFrom <- if isBreak 
-                   then pure Nothing
-                   else do
-                        jump doneLbl
-                        Just <$> use predBlock 
+                comeFrom <-
+                    if isBreak
+                        then pure Nothing
+                        else do
+                            jump doneLbl
+                            Just <$> use predBlock
                 pure (operand, comeFrom)
             label catchLbl
+            comment (show catchExpr)
             operand <- NonEmpty.last <$> mapM assembleExpr catchExpr
             alloced <- alloca name taggedType
             store operand alloced
@@ -278,12 +281,12 @@ assembleExpr (Typed taggedType expr) =
             void
                 $ call
                     (I 1)
-                    (global (TyFun [opaquePtr, ptr Char] Unit) (Ident $ Text.pack printString))
+                    (global (TyFun [opaquePtr, ptr Char] Unit) (fst3 printString))
                     [constant (LNull opaquePtr), global opaquePtr var]
             void
                 $ call
                     (I 1)
-                    (global (TyFun [] Void) (Ident $ Text.pack exitFailure))
+                    (global (TyFun [] Void) (fst3 exitFailure))
                     []
             pure (undef taggedType)
 

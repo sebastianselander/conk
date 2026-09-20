@@ -11,15 +11,13 @@ import Control.Lens.Getter (views)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Text (pack, unpack)
-import Frontend.Error (Report, report)
 import Frontend.Types
 import Names (Ident (..))
 import Relude hiding (span)
-import Text.Megaparsec (ParseErrorBundle, Pos, customFailure, (<?>))
+import Text.Megaparsec (Pos, customFailure, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
 import Text.Megaparsec.Char.Lexer qualified as L
-import Text.Megaparsec.Error (errorBundlePretty)
 
 type Parser = P.ParsecT CustomParseError Text (Reader (BindingPowerTable PrefixOp BinOp Void))
 
@@ -31,11 +29,11 @@ data CustomParseError = Keyword Text | WildCardName
 
 instance P.ShowErrorComponent CustomParseError where
     showErrorComponent = \case
-           Keyword word -> "'" <> unpack word <> "' is a keyword"
-           WildCardName  -> "Can not use '_' as a variable name"
+        Keyword word -> "'" <> unpack word <> "' is a keyword"
+        WildCardName -> "Can not use '_' as a variable name"
 
-instance Report (ParseErrorBundle Text CustomParseError) where
-    report = pack . errorBundlePretty
+namespaceSeparator :: (IsString s) => s
+namespaceSeparator = "::"
 
 keywords :: [Text]
 keywords =
@@ -89,6 +87,8 @@ keywords =
     , "{"
     , "||"
     , "}"
+    , "import"
+    , "as"
     ]
 
 keyword :: Text -> Parser ()

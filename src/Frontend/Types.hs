@@ -16,10 +16,10 @@ import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
 
 data NoExtField = NoExtField
-    deriving (Show, Eq, Ord, Data, Typeable, Generic)
+    deriving (Show, Eq, Ord, Data, Generic)
 
 data DataConCantHappen
-    deriving (Show, Eq, Ord, Data, Typeable, Generic)
+    deriving (Show, Eq, Ord, Data, Generic)
 
 data Span = Span
     { start :: !(Pos, Pos)
@@ -31,7 +31,7 @@ emptyInfo :: SourceInfo
 emptyInfo = SourceInfo {sourceFile = "", spanInfo = emptySpan}
 
 emptySpan :: Span
-emptySpan = Span (mkPos 0, mkPos 0) (mkPos 0, mkPos 0)
+emptySpan = Span (mkPos 1, mkPos 1) (mkPos 1, mkPos 1)
 
 instance Show Span where
     show Span {start, end} =
@@ -52,27 +52,34 @@ data Program a = Program !(XProgram a) [Def a]
 type family XProgram a
 
 deriving instance (Forall Show a) => Show (Program a)
-deriving instance (Forall Typeable a) => Typeable (Program a)
 
 -- Definition
 data Def a
-    = DefFn (Fn a)
+    = DefImport (Import a)
     | DefAdt (Adt a)
+    | DefFn (Fn a)
     | DefX !(XDef a)
 type family XDef a
 deriving instance (Forall Show a) => Show (Def a)
-deriving instance (Forall Typeable a) => Typeable (Def a)
 
 data Fn a = Fn !(XFn a) Ident [Arg a] (Type a) (Block a)
 type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
-deriving instance (Forall Typeable a) => Typeable (Fn a)
+
+-- \| ImportQualified !(XImport a) Namespace -- import foo.bar.baz
+-- \| ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
+
+data Import a
+    = ImportExplicit !(XImportExplicit a) Namespace [Ident] -- import foo (bar, baz)
+    | XImport !(XImport a)
+type family XImport a
+type family XImportExplicit a
+deriving instance (Forall Show a) => Show (Import a)
 
 data Adt a = Adt !(XAdt a) Ident [Constructor a]
 type family XAdt a
 deriving instance (Forall Show a) => Show (Adt a)
-deriving instance (Forall Typeable a) => Typeable (Adt a)
 
 data Constructor a
     = EnumCons (XEnumCons a) Ident
@@ -83,14 +90,12 @@ type family XConstructor a
 type family XEnumCons a
 type family XFunCons a
 deriving instance (Forall Show a) => Show (Constructor a)
-deriving instance (Forall Typeable a) => Typeable (Constructor a)
 
 -- Argument
 data Arg a = Arg !(XArg a) Ident (Type a)
 type family XArg a
 
 deriving instance (Forall Show a) => Show (Arg a)
-deriving instance (Forall Typeable a) => Typeable (Arg a)
 
 -- Type
 data Type a
@@ -117,13 +122,11 @@ data TyLit = Unit | String | Int | Double | Char | Bool
     deriving (Show, Eq, Ord, Enum, Data)
 
 deriving instance (Forall Show a) => Show (Type a)
-deriving instance (Forall Typeable a) => Typeable (Type a)
 
 data Block a = Block !(XBlock a) [Stmt a] (Maybe (Expr a))
 type family XBlock a
 
 deriving instance (Forall Show a) => Show (Block a)
-deriving instance (Forall Typeable a) => Typeable (Block a)
 
 -- Statement
 data Stmt a
@@ -142,7 +145,6 @@ data AssignOp
     deriving (Show, Eq, Ord, Data)
 
 deriving instance (Forall Show a) => Show (Stmt a)
-deriving instance (Forall Typeable a) => Typeable (Stmt a)
 
 -- Expression
 data Expr a
@@ -164,7 +166,6 @@ data Expr a
     | Expr !(XExpr a)
 
 deriving instance (Forall Show a) => Show (Expr a)
-deriving instance (Forall Typeable a) => Typeable (Expr a)
 
 type family XExprStmt a
 type family XLit a
@@ -187,7 +188,6 @@ type family XMatch a
 data MatchArm a = MatchArm !(XMatchArm a) (Pattern a) (Expr a)
 
 deriving instance (Forall Show a) => Show (MatchArm a)
-deriving instance (Forall Typeable a) => Typeable (MatchArm a)
 
 type family XMatchArm a
 
@@ -197,7 +197,6 @@ data Pattern a
     | PFunCon !(XPFunCon a) Ident [Pattern a]
 
 deriving instance (Forall Show a) => Show (Pattern a)
-deriving instance (Forall Typeable a) => Typeable (Pattern a)
 
 type family XPVar a
 type family XPEnumCon a
@@ -207,7 +206,6 @@ data LamArg a = LamArg !(XLamArg a) Ident
 type family XLamArg a
 
 deriving instance (Forall Show a) => Show (LamArg a)
-deriving instance (Forall Typeable a) => Typeable (LamArg a)
 
 data PrefixOp = Not | Neg
     deriving (Show, Eq, Ord, Data)
@@ -244,7 +242,6 @@ type family XBoolLit a
 type family XUnitLit a
 
 deriving instance (Forall Show a) => Show (Lit a)
-deriving instance (Forall Typeable a) => Typeable (Lit a)
 
 type Forall (c :: Data.Kind.Type -> Constraint) a =
     ( c (XApp a)
@@ -282,6 +279,8 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XLamArg a)
     , c (XFn a)
     , c (XAdt a)
+    , c (XImport a)
+    , c (XImportExplicit a)
     , c (XConstructor a)
     , c (XEnumCons a)
     , c (XFunCons a)

@@ -1,9 +1,0 @@
-def main() {
-    if !true {
-        printInt(1);
-        printString("\n");
-    } else {
-        printInt(0);
-        printString("\n");
-    }
-}

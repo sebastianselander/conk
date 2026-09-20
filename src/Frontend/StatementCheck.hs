@@ -23,7 +23,7 @@ runCheck :: Ctx -> ChM a -> Either [ChError] a
 runCheck ctx = runValidate . flip runReaderT ctx . runCh
 
 check :: ProgramRn -> Either [ChError] ProgramRn
-check prg@(Program NoExtField defs) = case lefts $ map checkDef defs of
+check prg@(Program _ defs) = case lefts $ map checkDef defs of
     [] -> pure prg
     xs -> Left $ concat xs
 
@@ -41,6 +41,7 @@ checkFunction (Fn info name _ returnType block) = runCheck (Ctx False) $ case re
 checkDef :: DefRn -> Either [ChError] ()
 checkDef (DefFn fn) = checkFunction fn
 checkDef (DefAdt _) = pure ()
+checkDef (DefImport _) = pure ()
 
 breakBlock :: BlockRn -> ChM ()
 breakBlock (Block _ statements tail) = mapM_ breakStmt statements >> mapM_ breakExpr tail
@@ -79,7 +80,6 @@ breakExpr = \case
 
 breakMatchArm :: MatchArmRn -> ChM ()
 breakMatchArm (MatchArm _ _ expr) = breakExpr expr
-
 
 returnBlock :: BlockRn -> ChM Bool
 returnBlock (Block _ statements _) = returnStmts statements
@@ -142,12 +142,12 @@ hasInfoStmt = \case
 hasInfoExpr :: ExprRn -> SourceInfo
 hasInfoExpr = \case
     Lit info _ -> info
-    Var (info, _) _ -> info
+    Var (info, _, _) _ -> info
     Prefix info _ _ -> info
     BinOp info _ _ _ -> info
     App info _ _ -> info
     Let (info, _) _ _ -> info
-    Ass (info, _) _ _ _ -> info
+    Ass (info, _, _) _ _ _ -> info
     Ret info _ -> info
     EBlock NoExtField (Block info _ _) -> info
     Break info _ -> info

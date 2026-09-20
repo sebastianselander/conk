@@ -1,9 +1,10 @@
 {-# LANGUAGE ApplicativeDo #-}
 
-module Options (cmdlineParser, Options(..), Pass(..)) where
+module Options (cmdlineParser, Options (..), Pass (..)) where
 
 import Data.Set qualified as Set
 import Options.Applicative
+import Options.Applicative.NonEmpty (some1)
 import Relude
 
 data Pass = Parse | Rename | StCheck | TypeCheck | Desugar | Llvm
@@ -11,7 +12,7 @@ data Pass = Parse | Rename | StCheck | TypeCheck | Desugar | Llvm
 
 data Options = Options
     { dumps :: Set Pass
-    , filepath :: FilePath
+    , filepaths :: NonEmpty FilePath
     }
 
 cmdlineParser :: IO Options
@@ -20,8 +21,8 @@ cmdlineParser = execParser (info (options <**> helper) fullDesc)
 options :: Parser Options
 options = do
     dumps <- pDumps
-    filepath <- pInput
-    pure $ Options {dumps, filepath}
+    filepaths <- pInput
+    pure $ Options {dumps, filepaths}
 
 pDumps :: Parser (Set Pass)
 pDumps =
@@ -39,5 +40,5 @@ pDumps =
             , flag Nothing (Just Llvm) (long "dump-llvm" <> help "Dump the generated llvm-ir code")
             ]
 
-pInput :: Parser FilePath
-pInput = argument str (metavar "<FILE>")
+pInput :: Parser (NonEmpty FilePath)
+pInput = some1 (argument str (metavar "[FILE...]"))

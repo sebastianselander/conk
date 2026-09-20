@@ -1,8 +1,0 @@
-def foo() -> fn(int, int) -> int {
-    \x y -> y + y
-}
-
-def main() {
-    printInt(foo()(0,2));
-    printString("\n");
-}

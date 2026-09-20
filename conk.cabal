@@ -39,6 +39,7 @@ library
     Frontend.Error
     Frontend.Parser.Parse
     Frontend.Parser.Types
+    Frontend.Parser.Pretty
     Frontend.Parser.Utils
     Frontend.Renamer.Monad
     Frontend.Renamer.Pretty
@@ -55,9 +56,11 @@ library
     Options
     Origin
     Utils
+    Table
 
   build-depends:
     , base
+    , filepath
     , containers
     , dlist
     , extra
@@ -85,6 +88,9 @@ executable conk
     , pretty-simple
     , process
     , relude
+    , filepath
+    , extra
+
 
   hs-source-dirs:   app
   default-language: GHC2024

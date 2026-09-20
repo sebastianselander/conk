@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unused-local-binds #-}
@@ -5,26 +6,53 @@
 module Frontend.Parser.Parse (parse) where
 
 import Data.Map qualified as Map
+import Data.Maybe (fromJust)
 import Data.Tuple.Extra (uncurry3)
 import Frontend.Parser.Types
 import Frontend.Parser.Utils
 import Frontend.Types
+import Names (Ident (Ident), Namespace (Namespace), mkNamespace)
 import Relude hiding (break, span)
+import System.FilePath (dropExtension)
 import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char.Lexer qualified as P
+import Utils (File (..))
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
-    String ->
-    Text ->
+    File ->
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
-        . P.runParserT (Program NoExtField <$> (lexeme (return ()) *> P.many definition <* P.eof)) file
+        $ P.runParserT
+            ( Program (mkNamespace (dropExtension file.name))
+                <$> (lexeme (return ()) *> P.many definition <* P.eof)
+            )
+            file.name
+            file.content
 
-parse :: String -> Text -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
+parse :: File -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable
+
+import_ :: Parser ImportPar
+import_ = do
+    gs <- spanStart
+    keyword "import"
+    ns <- namespace
+    P.choice
+        [ (\asName loc -> XImport $ ImportAs ns asName loc) <$> (keyword "as" *> identifier) <*> spanEnd gs
+        , ((\symbols loc -> ImportExplicit loc ns symbols) <$> parens (commaSepEnd identifier)) <*> spanEnd gs
+        , XImport . ImportQualified ns <$> spanEnd gs
+        ]
+        <* semicolon
+
+namespace :: Parser Namespace
+namespace =
+    Namespace
+        . fromList
+        . fmap (\(Ident name) -> name)
+        <$> lexeme (P.sepBy identifier (P.hidden namespaceSeparator))
 
 datatype :: Parser AdtPar
 datatype = do
@@ -46,7 +74,7 @@ constructor = do
         Just tys -> pure $ FunCons loc constructorName tys
 
 definition :: Parser DefPar
-definition = DefFn <$> function <|> DefAdt <$> datatype
+definition = DefImport <$> import_ <|> DefFn <$> function <|> DefAdt <$> datatype
 
 function :: Parser FnPar
 function = do
@@ -181,11 +209,11 @@ match = do
     pMatchArm :: Parser MatchArmPar
     pMatchArm = do
         gs <- spanStart
-        pattern <- pPattern
+        pat <- pPattern
         keyword "=>"
         body <- expression
         loc <- spanEnd gs
-        pure $ MatchArm loc pattern body
+        pure $ MatchArm loc pat body
       where
         pPattern :: Parser PatternPar
         -- NOTE: Must parse wildcard before normal variable or it will be tried as a variable
@@ -286,9 +314,16 @@ atom =
     variable :: Parser ExprPar
     variable = do
         gs <- spanStart
-        name <- identifier <|> upperIdentifier
+        names <- lexeme (P.sepBy1 (identifier <|> upperIdentifier) (P.hidden namespaceSeparator))
+        let name = fromJust (viaNonEmpty last names)
+        let namespace = Namespace . fmap (\(Ident name) -> name) . fromList <$> viaNonEmpty init names
+        let namespaceOpt = case viaNonEmpty init names of
+                Nothing -> Nothing
+                Just [] -> Nothing
+                Just xs -> Just (Namespace (fmap (\(Ident name) -> name) (fromList xs)))
+
         info <- spanEnd gs
-        pure (Var info name)
+        pure (Var (info, namespaceOpt) name)
 
 literal :: Parser ExprPar
 literal =

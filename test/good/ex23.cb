@@ -1,4 +1,0 @@
-def main() {
-    let x = 'a';
-    printChar(x);
-}

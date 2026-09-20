@@ -1,9 +1,0 @@
-def main() {
-    let y = if true {
-         3
-    } else {
-         2
-    };
-    printInt(y);
-    printString("\n");
-}

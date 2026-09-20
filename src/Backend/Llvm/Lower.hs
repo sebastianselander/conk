@@ -6,14 +6,13 @@ module Backend.Llvm.Lower where
 
 import Prettyprinter
 
-import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types
 import Backend.Types (Type (..))
 import Prettyprinter.Render.Text (renderStrict)
 import Relude hiding (Type)
 
 llvmOut :: (Pretty a) => a -> Text
-llvmOut = (prelude <>) . renderStrict . layoutPretty (LayoutOptions {layoutPageWidth = Unbounded}) . pretty
+llvmOut = renderStrict . layoutPretty (LayoutOptions {layoutPageWidth = Unbounded}) . pretty
 
 indentLevel :: Int
 indentLevel = 4
@@ -22,7 +21,8 @@ indentedBlock :: [Named Instruction] -> Doc ann
 indentedBlock instr = indent indentLevel (hcat $ punctuate hardline (fmap pretty instr))
 
 instance Pretty Ir where
-    pretty (Ir decls) = hcat $ punctuate (hardline <> hardline) $ fmap pretty decls
+    pretty (IrMain decls) = hcat $ punctuate (hardline <> hardline) $ fmap pretty decls
+    pretty (IrLib decls) = hcat $ punctuate (hardline <> hardline) $ fmap pretty decls
 
 instance Pretty Decl where
     pretty (TypeDefinition name ty) =
@@ -34,14 +34,14 @@ instance Pretty Decl where
             <+> pretty ty
     pretty (GlobalString name ty string) = "@" <> pretty name <+> "= constant" <+> pretty ty <+> "c" <+> dquotes (pretty string)
     pretty (LlvmMain instr) =
-        "define void @main()"
+        "define i1 @main()"
             <+> lbrace
             <> hardline
             <> "entry:" -- TODO: does not belong here
             <> hardline
             <> indentedBlock instr
             <> hardline
-            <> indent 4 "ret void"
+            <> indent 4 "ret i1 0"
             <> hardline
             <> rbrace
     pretty (Define _ name args ty instr) =
@@ -57,6 +57,17 @@ instance Pretty Decl where
             <> indentedBlock instr
             <> hardline
             <> rbrace
+    pretty (Declare ty name args ellipsis) =
+        "declare"
+            <+> pretty ty
+            <+> "@"
+            <> pretty name
+            <> parens
+                ( concatWith
+                    (surround (comma <> space))
+                    (fmap pretty args)
+                    <> if ellipsis == Ellipsis then ", ..." else ""
+                )
 
 instance Pretty Type where
     pretty = \case
@@ -79,8 +90,8 @@ instance Pretty Constant where
         LInt _ int -> show int
         LDouble _ double -> show double
         LBool _ b -> bool "false" "true" b
-        LChar _ _ -> error "TODO"
-        LUnit -> "1"
+        LChar _ c -> show (ord c)
+        LUnit -> "0"
         LNull _ -> "null"
         LStruct constants ->
             braces

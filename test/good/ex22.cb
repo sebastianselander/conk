@@ -1,3 +1,0 @@
-type List {
-    Foo(int)
-}

@@ -1,22 +1,26 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Frontend.Typechecker.Types where
 
-import Data.Data (Data)
-import Relude hiding (Type, Any)
-import Frontend.Types hiding (Bool, Unit, Char, String, Double, Int)
 import Control.Lens (makeLenses)
+import Data.Data (Data)
 import Frontend.Renamer.Types (Boundedness)
+import Frontend.Types hiding (Bool, Char, Double, Int, String, Unit)
+import Relude hiding (Any, Type)
 
 data Tc deriving (Data)
 
+data FnType = FnType {retType :: TypeTc, argTypes :: [TypeTc]}
+    deriving (Show, Eq, Ord, Data)
+
 type ProgramTc = Program Tc
 type DefTc = Def Tc
+type ImportTc = Import Tc
 type FnTc = Fn Tc
 type AdtTc = Adt Tc
 type ConstructorTc = Constructor Tc
@@ -47,6 +51,8 @@ type instance XProgram Tc = NoExtField
 type instance XArg Tc = NoExtField
 
 type instance XDef Tc = DataConCantHappen
+type instance XImport Tc = DataConCantHappen
+type instance XImportExplicit Tc = [FnType]
 type instance XFn Tc = NoExtField
 
 type instance XAdt Tc = SourceInfo
@@ -108,6 +114,6 @@ pattern Any <- Type AnyX
 data MetaTy = AnyX
     deriving (Show, Eq, Ord, Data)
 
-data StmtType = StmtType { _stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
-    deriving (Show, Eq, Ord, Data, Typeable)
+data StmtType = StmtType {_stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
+    deriving (Show, Eq, Ord, Data)
 $(makeLenses ''StmtType)
