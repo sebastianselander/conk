@@ -168,7 +168,7 @@ produceObjectFile asmFilename objectFilename = do
 
 linkObjectFiles :: NonEmpty FilePath -> FilePath -> IO FilePath
 linkObjectFiles files out = do
-    hPutStrLn stderr $ "Linking: " <> show files
+    hPutStrLn stderr $ "Linking: " <> show (toList files)
     let process =
             proc
                 "gcc"
