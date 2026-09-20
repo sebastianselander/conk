@@ -163,10 +163,12 @@ tcFunction names defTable fun@(Fn _ _ args rt _) =
         env = Env varTable
      in run ctx env $ go fun
   where
-    go (Fn _ name args rt block) =
+    go :: Fn Rn -> TcM (Fn Tc)
+    go (Fn loc name args rt block) =
         locally Ctx.currentFun (const fun) $ do
             args <- mapM infArg args
             let retTy = typeOf rt
+            unify @_ @TypeTc loc (TyLit NoExtField Unit) retTy
             block <- locally Ctx.returnType (const retTy) $ case block of
                 Block info stmts (Just expr) -> do
                     stmts <- mapM infStmt stmts
@@ -627,6 +629,9 @@ lookupFun namespace name =
 
 class TypeOf a where
     typeOf :: a -> TypeTc
+
+instance TypeOf TypeTc where
+    typeOf ty = ty
 
 instance TypeOf StmtTc where
     typeOf = \case
