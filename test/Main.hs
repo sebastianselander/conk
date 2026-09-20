@@ -17,7 +17,7 @@ import System.Directory
       withCurrentDirectory,
     )
 import System.Exit (ExitCode (..))
-import System.FilePath (takeExtension, (</>))
+import System.FilePath (takeExtension, (</>), normalise)
 import System.Process (proc, readCreateProcessWithExitCode)
 import Utils (File (..), conkFileExtension)
 
@@ -71,15 +71,16 @@ readDirectory :: TestType -> FilePath -> IO TestCase
 readDirectory testType dir = do
     dirExists <- doesDirectoryExist dir
     unless dirExists (throw (MissingDirectoryException dir))
-    files <- listDirectory dir
-    let inputFilepaths = filter ((conkFileExtension ==) . takeExtension) files
-    assert (not (null inputFilepaths)) (pure ())
-    let outputFilepaths = filter ((".out" ==) . takeExtension) files
-    assert (length outputFilepaths <= 1) (pure ())
-    let outputFilepath = listToMaybe outputFilepaths
-    inputFiles <- mapM (\path -> File path . decodeUtf8 <$> readFileBS (dir </> path)) inputFilepaths
-    outputFile <- mapM (\path -> File path . decodeUtf8 <$> readFileBS (dir </> path)) outputFilepath
-    pure (TestCase (fromList inputFiles) outputFile dir testType)
+    withCurrentDirectory dir $ do
+        files <- fmap normalise <$> listDirectoryRecursive "."
+        let inputFilepaths = filter ((conkFileExtension ==) . takeExtension) files
+        assert (not (null inputFilepaths)) (pure ())
+        let outputFilepaths = filter ((".out" ==) . takeExtension) files
+        assert (length outputFilepaths <= 1) (pure ())
+        let outputFilepath = listToMaybe outputFilepaths
+        inputFiles <- mapM (\path -> File path . decodeUtf8 <$> readFileBS path) inputFilepaths
+        outputFile <- mapM (\path -> File path . decodeUtf8 <$> readFileBS path) outputFilepath
+        pure (TestCase (fromList inputFiles) outputFile dir testType)
 
 consumeResult :: Result -> IO Bool
 consumeResult = pure . coerce
@@ -95,32 +96,31 @@ runTestCase
         do
             putStrLn "=========================================================="
             putStrLn ("Running test '" <> directoryPath <> "'")
-            withCurrentDirectory directoryPath $ do
-                cwd <- getCurrentDirectory
-                putStrLn $ "Setting current working directory to `" <> cwd <> "`"
-                Text.putStrLn $ "Compiling " <> unwords ((\file -> pack file.name) <$> toList inputFiles)
-                executable <- produceExecutable mempty inputFiles "main"
-                (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
-                case code of
-                    ExitFailure _ ->
-                        putStrLn
-                            ( "Test: '"
-                                <> intercalate ":" (fmap (.name) (toList inputFiles))
-                                <> "' failed with message: "
-                                <> err
-                            )
-                            >> pure (Result False)
-                    ExitSuccess -> do
-                        case outFile of
-                            Nothing -> putStrLn "Missing out file" >> Relude.exitFailure
-                            Just outFile -> do
-                                if outFile.content == pack out
-                                    then putStrLn ("Success for '" <> outFile.name <> "'") >> pure (Result True)
-                                    else do
-                                        Text.putStrLn $ "Expected: " <> clarifyEmpty outFile.content
-                                        Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
-                                        putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
-                                        pure (Result False)
+            cwd <- getCurrentDirectory
+            putStrLn $ "Setting current working directory to `" <> cwd <> "`"
+            Text.putStrLn $ "Compiling " <> unwords ((\file -> pack file.name) <$> toList inputFiles)
+            executable <- produceExecutable mempty inputFiles "main"
+            (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
+            case code of
+                ExitFailure _ ->
+                    putStrLn
+                        ( "Test: '"
+                            <> intercalate ":" (fmap (.name) (toList inputFiles))
+                            <> "' failed with message: "
+                            <> err
+                        )
+                        >> pure (Result False)
+                ExitSuccess -> do
+                    case outFile of
+                        Nothing -> putStrLn "Missing out file" >> Relude.exitFailure
+                        Just outFile -> do
+                            if outFile.content == pack out
+                                then putStrLn ("Success for '" <> outFile.name <> "'") >> pure (Result True)
+                                else do
+                                    Text.putStrLn $ "Expected: " <> clarifyEmpty outFile.content
+                                    Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
+                                    putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
+                                    pure (Result False)
 runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType} = do
     let (a, _) = runCompile inputFiles
     case (a, testType) of
@@ -135,3 +135,17 @@ runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType}
 clarifyEmpty :: Text -> Text
 clarifyEmpty "" = "<empty>"
 clarifyEmpty s = s
+
+listDirectoryRecursive :: FilePath -> IO [FilePath]
+listDirectoryRecursive path = go "" path
+  where
+    go :: String -> FilePath -> IO [FilePath]
+    go prefix path = do
+        path <- pure (prefix </> path)
+        isDir <- doesDirectoryExist path
+        case isDir of
+            True -> do
+                paths <- listDirectory path 
+                paths <- mapM (go path) paths
+                pure (concat paths)
+            False -> pure [path]
