@@ -7,7 +7,7 @@ module Main (main) where
 import Compile
 import Control.Exception (assert, throw)
 import Data.List (isSubsequenceOf)
-import Data.Text (pack)
+import Data.Text (pack, unpack)
 import Data.Text.IO qualified as Text
 import Relude
 import System.Directory
@@ -64,6 +64,7 @@ allTests = do
     badResults <- mapM (readDirectory Bad >=> runTestCase) bads
     mapM consumeResult goodResults >>= flip unless Relude.exitFailure . and
     mapM consumeResult badResults >>= flip unless Relude.exitFailure . and
+    putStrLn "===== ALL TESTS PASSED ====="
     Relude.exitSuccess
 
 readDirectory :: TestType -> FilePath -> IO TestCase
@@ -123,8 +124,13 @@ runTestCase
 runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType} = do
     let (a, _) = runCompile inputFiles
     case (a, testType) of
-        (Left _, Bad) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
-        (Right res, Bad) -> putStrLn ("Test: '" <> (head inputFiles).name <> "' failed because program compiled successfully.") >> pure (Result False)
+        (Left reason, Bad) ->
+            putStrLn
+                ("Success for '" <> (head inputFiles).name <> "'. It failed with reason:\n" <> unpack reason)
+                >> pure (Result True)
+        (Right _, Bad) ->
+            putStrLn ("Test: '" <> (head inputFiles).name <> "' failed because program compiled successfully.")
+                >> pure (Result False)
 
 clarifyEmpty :: Text -> Text
 clarifyEmpty "" = "<empty>"

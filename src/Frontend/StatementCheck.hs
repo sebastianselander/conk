@@ -23,7 +23,7 @@ runCheck :: Ctx -> ChM a -> Either [ChError] a
 runCheck ctx = runValidate . flip runReaderT ctx . runCh
 
 check :: ProgramRn -> Either [ChError] ProgramRn
-check prg@(Program namespace defs) = case lefts $ map checkDef defs of
+check prg@(Program _ defs) = case lefts $ map checkDef defs of
     [] -> pure prg
     xs -> Left $ concat xs
 

@@ -13,17 +13,14 @@ import Backend.Llvm.Lower (llvmOut)
 import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
 import Control.Arrow (left)
-import Control.Lens (view)
 import Control.Monad.Except (liftEither)
-import Control.Monad.RWS qualified as Map
 import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
 import Data.Foldable1 (foldr1)
 import Data.Functor qualified as Functor
-import Data.Generics (Data, listify)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text (concat, intercalate, pack, unpack)
+import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
 import Frontend.Builtin (builtIns)
 import Frontend.Error (Report (..), TcError, TcWarning)
@@ -31,16 +28,15 @@ import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
-import Frontend.Renamer.Types (Boundedness (Imported), ProgramRn)
 import Frontend.StatementCheck (check)
 import Frontend.Tc (TypeCons (..), getFuns, getTypesAndCons, tc)
 import Frontend.Typechecker.Pretty (pThing)
-import Frontend.Typechecker.Types (ProgramTc, TypeTc)
+import Frontend.Typechecker.Types (ProgramTc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
 import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
 import Relude hiding (concat, concatMap, intercalate)
-import System.Directory.Extra (createDirectory, doesFileExist, removeDirectoryRecursive, doesDirectoryExist)
+import System.Directory.Extra (createDirectory, doesDirectoryExist, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
 import System.FilePath
     ( dropExtension,
@@ -51,9 +47,9 @@ import System.FilePath
       (</>),
     )
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
-import Table (DefTable (..), functions)
+import Table (DefTable (..))
 import Text.Pretty.Simple (pShow)
-import Utils (File (name), listify', zipNE)
+import Utils (File (name), zipNE)
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
@@ -94,14 +90,14 @@ compile files = do
 
     let modules = NE.zip files programs
     let symbolsMap = gatherSymbols modules
+    let namespaces = Set.fromList $ toList $ fmap (\(Program namespace _) -> namespace) programs
 
-    res <- liftEither $ left report $ mapM (rename symbolsMap) programs
+    res <- liftEither $ left report $ mapM (rename namespaces symbolsMap) programs
     let (programs, names) = second (foldr1 combine) (Functor.unzip res)
     log (Debug Rename (Just $ prettyRenamer programs) (toStrict $ pShow res)) []
 
     res <- liftEither $ left report $ mapM check programs
     log (Debug StCheck Nothing (toStrict $ pShow res)) []
-
 
     let defTable =
             Table
@@ -183,7 +179,7 @@ linkObjectFiles files out = do
             hPutStrLn stderr (pack err)
             exitWith (ExitFailure code)
 
-produceExecutable :: HasCallStack => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
+produceExecutable :: (HasCallStack) => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
 produceExecutable dumps files out = do
     case runCompile files of
         (res, debugs) -> case res of

@@ -31,6 +31,8 @@ module Frontend.Renamer.Monad
       arguments,
       resetArgs,
       insertImportName,
+      namespaces,
+      doesNamespaceExist,
     ) where
 
 import Control.Lens hiding ((<|))
@@ -61,6 +63,7 @@ data Ctx = Ctx
     , _namespace :: Namespace
     , _builtins :: Map Namespace (Map Ident Ident)
     , _allVars :: Map Namespace (Set Ident)
+    , _namespaces :: Set Namespace
     }
     deriving (Show)
 
@@ -89,7 +92,8 @@ emptyEnv imported =
         , _importName = mempty
         }
 
-emptyCtx :: Namespace -> Map Namespace (Map Ident Ident) -> Map Namespace (Set Ident) -> Ctx
+emptyCtx ::
+    Namespace -> Map Namespace (Map Ident Ident) -> Map Namespace (Set Ident) -> Set Namespace -> Ctx
 emptyCtx = Ctx mempty
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
@@ -127,6 +131,9 @@ isBuiltin namespace name =
         <$> views
             builtins
             (Map.lookup name <=< Map.lookup namespace)
+
+doesNamespaceExist :: MonadReader Ctx m => Namespace -> m Bool
+doesNamespaceExist namespace = views namespaces (Set.member namespace)
 
 {-| Checks if a variable is bound in the closest scope
   | It does *not* check if a variable is completely unbound

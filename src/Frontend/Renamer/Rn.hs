@@ -17,9 +17,10 @@ import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
 
-rename :: Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename symbolMap prg@(Program namespace _) =
-    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par)) allVars) $ rnProgram prg
+rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
+rename namespaces symbolMap prg@(Program namespace _) =
+    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par)) allVars namespaces)
+        $ rnProgram prg
   where
     resolve :: Map Namespace (Map Ident b) -> Map Namespace (Map Ident Ident)
     resolve = Map.map (Map.mapWithKey const)
@@ -95,12 +96,16 @@ Transforms `import foo.bar` to `import foo.bar (f)`
 -}
 rnImport :: ImportPar -> Gen ImportRn
 rnImport (ImportExplicit loc namespace symbols) = do
+    exist <- doesNamespaceExist namespace
+    unless exist $ unboundImport loc namespace
     modifying importedDefinitions (\acc -> foldr (`Map.insert` namespace) acc symbols)
     pure (ImportExplicit loc namespace symbols)
 rnImport (XImport extraimport) = rnExtraImport extraimport
   where
     rnExtraImport :: ExtraImports SourceInfo -> Gen ImportRn
     rnExtraImport (ImportAs namespace name loc) = do
+        exist <- doesNamespaceExist namespace
+        unless exist $ unboundImport loc namespace
         insertImportName name namespace
         defs <- view allVars
         let symbols =
@@ -115,6 +120,8 @@ rnImport (XImport extraimport) = rnExtraImport extraimport
                         defs
         pure (ImportExplicit loc namespace symbols)
     rnExtraImport (ImportQualified namespace loc) = do
+        exist <- doesNamespaceExist namespace
+        unless exist $ unboundImport loc namespace
         defs <- view allVars
         let symbols =
                 sort

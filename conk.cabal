@@ -39,6 +39,7 @@ library
     Frontend.Error
     Frontend.Parser.Parse
     Frontend.Parser.Types
+    Frontend.Parser.Pretty
     Frontend.Parser.Utils
     Frontend.Renamer.Monad
     Frontend.Renamer.Pretty

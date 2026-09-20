@@ -9,6 +9,7 @@ import Control.Lens.Getter (view)
 import Control.Monad.Validate
 import Data.Text (intercalate, pack)
 import Data.Text qualified as Text
+import Frontend.Parser.Pretty ()
 import Frontend.Renamer.Pretty ()
 import Frontend.Renamer.Types (ExprRn, PatternRn)
 import Frontend.TH
@@ -16,15 +17,19 @@ import Frontend.Typechecker.Ctx (Ctx, exprStack, names)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types
 import Frontend.Types (SourceInfo (..), Span (..))
-import Names (Ident, getOriginalName', renameBack)
+import Names (Ident, Namespace, getOriginalName', renameBack)
 import Relude hiding (All, First, intercalate)
 import Text.Megaparsec (unPos)
 import Utils (indent, quote)
+import Frontend.Parser.Types (ImportPar)
+import Text.Megaparsec.Error (ParseErrorBundle, errorBundlePretty)
+import Frontend.Parser.Utils (CustomParseError)
 
 data RnError
     = UnboundVariable SourceInfo Ident
     | ConflictingDefinitionArgument SourceInfo Ident
     | DuplicateToplevels SourceInfo Ident
+    | UnboundImport SourceInfo Namespace
     deriving (Show)
 
 data TcError
@@ -54,6 +59,9 @@ data TcWarning = MakeExpressionBreak SourceInfo ExprTc
 class Report a where
     report :: a -> Text
 
+instance Report (ParseErrorBundle Text CustomParseError) where
+    report = pack . errorBundlePretty
+
 instance (Report a) => Report [a] where
     report xs = intercalate "\n\n" $ fmap report xs
 
@@ -77,6 +85,7 @@ reportRnError err = case err of
             (unwords ["Variable", quote $ pThing name, "not in scope"])
     ConflictingDefinitionArgument info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
     DuplicateToplevels info name -> combineRn info (unwords ["Definition", quote $ pThing name, "already declared earlier"])
+    UnboundImport loc namespace -> combineRn loc (unwords ["Import", quote $ pThing namespace, "does not exist"])
 
 reportTcError :: TcError -> Text
 reportTcError err = case err of
@@ -388,6 +397,12 @@ expectedPatNArgs' loc pat expected got = do
     names <- view names
     exprStack <- fmap (renameBack names) <$> view exprStack
     refute (return $ ExpectedPatNArgs loc exprStack pat expected got)
+
+importDoesNotExist' :: (MonadValidate [RnError] m) => SourceInfo -> Namespace -> m a
+importDoesNotExist' loc = refute . return . UnboundImport loc
+
+importDoesNotExist :: (MonadValidate [RnError] m) => SourceInfo -> Namespace -> m ()
+importDoesNotExist loc = dispute . return . UnboundImport loc
 
 $(gen All "RnError")
 $(gen All "ChError")

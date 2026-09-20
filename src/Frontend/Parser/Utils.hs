@@ -11,15 +11,13 @@ import Control.Lens.Getter (views)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Text (pack, unpack)
-import Frontend.Error (Report, report)
 import Frontend.Types
 import Names (Ident (..))
 import Relude hiding (span)
-import Text.Megaparsec (ParseErrorBundle, Pos, customFailure, (<?>))
+import Text.Megaparsec ( Pos, customFailure, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
 import Text.Megaparsec.Char.Lexer qualified as L
-import Text.Megaparsec.Error (errorBundlePretty)
 
 type Parser = P.ParsecT CustomParseError Text (Reader (BindingPowerTable PrefixOp BinOp Void))
 
@@ -36,8 +34,6 @@ instance P.ShowErrorComponent CustomParseError where
 
 namespaceSeparator :: IsString s => s
 namespaceSeparator = "::"
-instance Report (ParseErrorBundle Text CustomParseError) where
-    report = pack . errorBundlePretty
 
 keywords :: [Text]
 keywords =
