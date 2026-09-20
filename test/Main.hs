@@ -97,7 +97,7 @@ runTestCase
             withCurrentDirectory directoryPath $ do
                 cwd <- getCurrentDirectory
                 putStrLn $ "Setting current working directory to `" <> cwd <> "`"
-                putStrLn $ "Compiling... " <> show ((.name) <$> toList inputFiles)
+                Text.putStrLn $ "Compiling " <> unwords ((\file -> pack file.name) <$> toList inputFiles)
                 executable <- produceExecutable mempty inputFiles "main"
                 (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
                 case code of
@@ -124,7 +124,7 @@ runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType}
     let (a, _) = runCompile inputFiles
     case (a, testType) of
         (Left _, Bad) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
-        _ -> putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure (Result False)
+        (Right res, Bad) -> putStrLn ("Test: '" <> (head inputFiles).name <> "' failed because program compiled successfully.") >> pure (Result False)
 
 clarifyEmpty :: Text -> Text
 clarifyEmpty "" = "<empty>"
