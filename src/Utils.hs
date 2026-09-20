@@ -6,6 +6,9 @@ import Data.Generics (Data, everything, everywhere, mkQ, mkT)
 import Relude
 import qualified Data.Text as Text
 
+conkFileExtension :: IsString s => s
+conkFileExtension = ".ck"
+
 data File = File { name :: String, content :: Text }
     deriving (Show)
 

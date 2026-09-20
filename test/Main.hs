@@ -5,77 +5,122 @@
 module Main (main) where
 
 import Compile
-import Data.List (groupBy)
-import Data.List.NonEmpty qualified as NE
+import Control.Exception (assert, throw)
+import Data.List (isSubsequenceOf)
 import Data.Text (pack)
 import Data.Text.IO qualified as Text
 import Relude
-import System.Directory (listDirectory)
+import System.Directory
+    ( doesDirectoryExist,
+      getCurrentDirectory,
+      listDirectory,
+      withCurrentDirectory,
+    )
 import System.Exit (ExitCode (..))
-import System.FilePath (dropExtensions)
+import System.FilePath (takeExtension, (</>))
 import System.Process (proc, readCreateProcessWithExitCode)
-import Utils (File (..), mkFile)
+import Utils (File (..), conkFileExtension)
+
+data TestCase = TestCase
+    { inputFiles :: NonEmpty File
+    , outFile :: Maybe File
+    , directoryPath :: FilePath
+    , testType :: TestType
+    }
+    deriving (Show)
+
+data TestType = Good | Bad
+    deriving (Show)
+
+newtype MissingDirectoryException = MissingDirectoryException FilePath
+    deriving (Show)
+
+instance Exception MissingDirectoryException
 
 main :: IO ()
 main = do
-    putStrLn "RUNNING TESTS\n"
-    goods <-
-        ( fmap
-            ( \case
-                [a, b] -> (a :| [], b)
-                [a] -> error $ "missing file for: " <> pack a
-                _ -> error "incorrect amount of files"
-            )
-            . groupBy (\l r -> dropExtensions l == dropExtensions r)
-            . sort
-        )
-            . fmap ("test/good/" ++)
-            <$> listDirectory "test/good"
+    args <- getArgs
+    case args of
+        [] -> allTests
+        xs -> mapM_ (\path -> specificTest (if "good" `isSubsequenceOf` path then Good else Bad) path) xs
 
-    bads <-
-        sort
-            . fmap ("test/bad/" ++)
-            <$> listDirectory "test/bad"
-    goods <-
-        mapM (testFile isRight) =<< mapM mkFiles goods
-    bads <- mapM (testFile isLeft . (,Nothing) . NE.singleton) =<< mapM mkFile bads
-    unless (and goods && and bads) exitFailure
-    exitSuccess
+specificTest :: TestType -> FilePath -> IO ()
+specificTest testType path = do
+    testCase <- readDirectory testType path
+    result <- runTestCase testCase
+    consumeResult result >>= \case
+        True -> Relude.exitSuccess
+        False -> Relude.exitFailure
 
-mkFiles :: (NonEmpty String, String) -> IO (NonEmpty File, Maybe File)
-mkFiles (a, b) = do
-    afiles <- mapM mkFile a
-    bfile <- mkFile b
-    pure (afiles, Just bfile)
+allTests :: IO ()
+allTests = do
+    putStrLn "RUNNING ALL TESTS\n"
+    goods <- sort . fmap ("test/good/" <>) <$> listDirectory "./test/good"
+    bads <- sort . fmap ("test/bad/" <>) <$> listDirectory "./test/bad"
+    goodResults <- mapM (readDirectory Good >=> runTestCase) goods
+    badResults <- mapM (readDirectory Bad >=> runTestCase) bads
+    mapM consumeResult goodResults >>= flip unless Relude.exitFailure . and
+    mapM consumeResult badResults >>= flip unless Relude.exitFailure . and
+    Relude.exitSuccess
 
-testFile :: (forall a b. Either a b -> Bool) -> (NonEmpty File, Maybe File) -> IO Bool
-testFile eitherToBool (inputFiles, Just outputFile) = do
-    putStrLn "=========================================================="
-    putStrLn ("Running test for '" <> intercalate ":" (toList (fmap (.name) inputFiles)) <> "'")
-    executable <- produceExecutable mempty inputFiles "main"
-    (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
-    case code of
-        ExitFailure _ ->
-            putStrLn
-                ( "Test: '"
-                    <> intercalate ":" (fmap (.name) (toList inputFiles))
-                    <> "' failed with message: "
-                    <> err
-                )
-                >> pure False
-        ExitSuccess -> do
-            if outputFile.content == pack out
-                then putStrLn ("Success for '" <> outputFile.name <> "'") >> pure True
-                else do
-                    Text.putStrLn $ "Expected: " <> clarifyEmpty outputFile.content
-                    Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
-                    putStrLn ("Test: '" <> outputFile.name <> "' failed with error message: " <> err)
-                    pure False
-testFile eitherToBool (inputFiles, Nothing) = do
+readDirectory :: TestType -> FilePath -> IO TestCase
+readDirectory testType dir = do
+    dirExists <- doesDirectoryExist dir
+    unless dirExists (throw (MissingDirectoryException dir))
+    files <- listDirectory dir
+    let inputFilepaths = filter ((conkFileExtension ==) . takeExtension) files
+    assert (not (null inputFilepaths)) (pure ())
+    let outputFilepaths = filter ((".out" ==) . takeExtension) files
+    assert (length outputFilepaths <= 1) (pure ())
+    let outputFilepath = listToMaybe outputFilepaths
+    inputFiles <- mapM (\path -> File path . decodeUtf8 <$> readFileBS (dir </> path)) inputFilepaths
+    outputFile <- mapM (\path -> File path . decodeUtf8 <$> readFileBS (dir </> path)) outputFilepath
+    pure (TestCase (fromList inputFiles) outputFile dir testType)
+
+newtype Result = Result Bool
+
+consumeResult :: Result -> IO Bool
+consumeResult = pure . coerce
+
+runTestCase :: TestCase -> IO Result
+runTestCase
+    TestCase
+        { inputFiles = inputFiles
+        , outFile = Just outFile
+        , directoryPath = directoryPath
+        } =
+        do
+            putStrLn "=========================================================="
+            putStrLn ("Running test '" <> directoryPath <> "'")
+            withCurrentDirectory directoryPath $ do
+                cwd <- getCurrentDirectory
+                putStrLn $ "Setting current working directory to `" <> cwd <> "`"
+                putStrLn $ "Compiling... " <> show ((.name) <$> toList inputFiles)
+                executable <- produceExecutable mempty inputFiles "main"
+                (code, out, err) <- readCreateProcessWithExitCode (proc executable []) ""
+                case code of
+                    ExitFailure _ ->
+                        putStrLn
+                            ( "Test: '"
+                                <> intercalate ":" (fmap (.name) (toList inputFiles))
+                                <> "' failed with message: "
+                                <> err
+                            )
+                            >> pure (Result False)
+                    ExitSuccess -> do
+                        if outFile.content == pack out
+                            then putStrLn ("Success for '" <> outFile.name <> "'") >> pure (Result True)
+                            else do
+                                Text.putStrLn $ "Expected: " <> clarifyEmpty outFile.content
+                                Text.putStrLn $ "Got: " <> clarifyEmpty (pack out)
+                                putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
+                                pure (Result False)
+runTestCase TestCase {inputFiles = inputFiles, outFile = Nothing, testType = testType} = do
     let (a, _) = runCompile inputFiles
-    if eitherToBool a
-        then putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure True
-        else putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure False
+    case (a, testType) of
+        (Left _, Bad) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
+        (Right _, Good) -> putStrLn ("Success for '" <> (head inputFiles).name <> "'") >> pure (Result True)
+        _ -> putStrLn ("Test: '" <> (head inputFiles).name <> "' failed.") >> pure (Result False)
 
 clarifyEmpty :: Text -> Text
 clarifyEmpty "" = "<empty>"
