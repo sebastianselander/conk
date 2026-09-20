@@ -3,5 +3,5 @@ def main() {
 }
 
 def foo(a: int) -> fn(int) -> (fn(int) -> ()) {
-    return \b -> \c -> { std.printInt(a + b + c); std.printString("\n"); }
+    return \b -> \c -> { std::printInt(a + b + c); std::printString("\n"); }
 }

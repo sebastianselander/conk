@@ -43,7 +43,7 @@ import_ = do
         <* semicolon
 
 namespace :: Parser Namespace
-namespace = Namespace . fromList . fmap (\(Ident name) -> name) <$> lexeme (P.sepBy identifier (P.hidden $ char '.'))
+namespace = Namespace . fromList . fmap (\(Ident name) -> name) <$> lexeme (P.sepBy identifier (P.hidden namespaceSeparator))
 
 datatype :: Parser AdtPar
 datatype = do
@@ -305,7 +305,7 @@ atom =
     variable :: Parser ExprPar
     variable = do
         gs <- spanStart
-        names <- lexeme (P.sepBy1  (identifier <|> upperIdentifier) (P.hidden (char '.')))
+        names <- lexeme (P.sepBy1  (identifier <|> upperIdentifier) (P.hidden namespaceSeparator))
         let name = fromJust (viaNonEmpty last names)
         let namespace = Namespace . fmap (\(Ident name) -> name) . fromList <$> viaNonEmpty init names
         let namespaceOpt = case viaNonEmpty init names of

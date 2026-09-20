@@ -3,6 +3,6 @@ def foo(x: int, y: int) -> int {
 }
 
 def main() {
-    std.printInt(foo(0,2));
-    std.printString("\n");
+    std::printInt(foo(0,2));
+    std::printString("\n");
 }

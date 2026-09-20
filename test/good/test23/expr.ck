@@ -14,6 +14,6 @@ def eval(e: Expr) -> int {
 
 def main() {
     let expr = Add(Mul(Lit(6), Lit(10)), Lit(9));
-    std.printInt(eval(expr));
-    std.printString("\n");
+    std::printInt(eval(expr));
+    std::printString("\n");
 }

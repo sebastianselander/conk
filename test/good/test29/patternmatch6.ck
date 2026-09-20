@@ -10,9 +10,9 @@ def foo() {
     loop {
         match Nil {
             Nil => {
-                std.printString("match\n");
+                std::printString("match\n");
                 break;
-                std.printString("after break\n")
+                std::printString("after break\n")
             }
         }
     }

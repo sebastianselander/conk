@@ -92,7 +92,7 @@ instance Pretty StmtRn where
     pretty (SExpr NoExtField expr) = Pretty.pretty expr <> Pretty.semi
 
 instance Pretty ArgRn where
-    pretty (Arg (_, namespace) name ty) = Pretty.pretty namespace <> "." <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
+    pretty (Arg (_, namespace) name ty) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
 instance Pretty TypeRn where
     pretty = prettyType1
@@ -156,7 +156,7 @@ prettyExpr7 :: ExprRn -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var (_,namespace,_) name) = Pretty.pretty namespace <> "." <> Pretty.pretty name
+prettyExpr7 (Var (_,namespace,_) name) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))
@@ -208,9 +208,9 @@ instance Pretty PatternRn where
 
 instance Pretty LamArgRn where
     pretty (LamArg (_, Nothing, namespace) name) =
-        Pretty.pretty namespace <> "." <> Pretty.pretty name
+        Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
     pretty (LamArg (_, Just ty, namespace) name) =
-        Pretty.parens $ Pretty.pretty namespace <> "." <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
+        Pretty.parens $ Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
 instance Pretty LitRn where
     pretty lit = case lit of

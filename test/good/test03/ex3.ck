@@ -1,8 +1,8 @@
 def main () {
     let x = 10;
     let fibres = fib(x);
-    std.printInt(fibres);
-    std.printString("\n");
+    std::printInt(fibres);
+    std::printString("\n");
 }
 
 def fib(n:int)    -> int {

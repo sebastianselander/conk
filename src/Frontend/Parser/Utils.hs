@@ -34,6 +34,8 @@ instance P.ShowErrorComponent CustomParseError where
            Keyword word -> "'" <> unpack word <> "' is a keyword"
            WildCardName  -> "Can not use '_' as a variable name"
 
+namespaceSeparator :: IsString s => s
+namespaceSeparator = "::"
 instance Report (ParseErrorBundle Text CustomParseError) where
     report = pack . errorBundlePretty
 

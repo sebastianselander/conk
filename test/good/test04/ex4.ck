@@ -7,6 +7,6 @@ def foo() -> int {
 }
 
 def main() {
-    std.printInt(foo());
-    std.printChar('\n');
+    std::printInt(foo());
+    std::printChar('\n');
 }

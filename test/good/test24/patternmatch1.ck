@@ -10,14 +10,14 @@ def main() {
     // pattern match
     let x = match var {
         Baz(n,m) => {
-            std.printInt(n); 
-            std.printString("\n");
+            std::printInt(n); 
+            std::printString("\n");
             match m {
                 Baz(k, x) => {
-                    std.printInt(k);
-                    std.printString("\n");
+                    std::printInt(k);
+                    std::printString("\n");
                     match x {
-                        Bar => std.printString("got bar\n")
+                        Bar => std::printString("got bar\n")
                     }
                 }
             }

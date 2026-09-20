@@ -4,6 +4,6 @@ type Foo {
 
 def main() {
     match Foo(3, 3) {
-        Foo(x,x) => std.printInt(x),
+        Foo(x,x) => std::printInt(x),
     };
 }
