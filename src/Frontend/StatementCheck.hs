@@ -81,7 +81,6 @@ breakExpr = \case
 breakMatchArm :: MatchArmRn -> ChM ()
 breakMatchArm (MatchArm _ _ expr) = breakExpr expr
 
-
 returnBlock :: BlockRn -> ChM Bool
 returnBlock (Block _ statements _) = returnStmts statements
 

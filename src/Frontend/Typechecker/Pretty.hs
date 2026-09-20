@@ -27,7 +27,8 @@ instance Pretty DefTc where
 instance Pretty ImportTc where
     pretty (ImportExplicit _types namespace names) =
         Pretty.pretty namespace
-            <+> Pretty.parens (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap Pretty.pretty names))
+            <+> Pretty.parens
+                (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap Pretty.pretty names))
 
 instance Pretty AdtTc where
     pretty (Adt _ name cons) =

@@ -1,21 +1,21 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Frontend.Typechecker.Types where
 
-import Data.Data (Data)
-import Relude hiding (Type, Any)
-import Frontend.Types hiding (Bool, Unit, Char, String, Double, Int)
 import Control.Lens (makeLenses)
+import Data.Data (Data)
 import Frontend.Renamer.Types (Boundedness)
+import Frontend.Types hiding (Bool, Char, Double, Int, String, Unit)
+import Relude hiding (Any, Type)
 
 data Tc deriving (Data)
 
-data FnType = FnType { retType :: TypeTc, argTypes :: [TypeTc]}
+data FnType = FnType {retType :: TypeTc, argTypes :: [TypeTc]}
     deriving (Show, Eq, Ord, Data)
 
 type ProgramTc = Program Tc
@@ -114,7 +114,6 @@ pattern Any <- Type AnyX
 data MetaTy = AnyX
     deriving (Show, Eq, Ord, Data)
 
-data StmtType = StmtType { _stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
+data StmtType = StmtType {_stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
     deriving (Show, Eq, Ord, Data)
 $(makeLenses ''StmtType)
-

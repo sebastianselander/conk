@@ -5,10 +5,10 @@ module Frontend.Renamer.Types where
 
 import Data.Data (Data)
 import Frontend.Parser.Types
-import Prettyprinter
-import Relude hiding (Type)
 import Frontend.Types
 import Names (Namespace)
+import Prettyprinter
+import Relude hiding (Type)
 
 data Boundedness = Free | Bound | Toplevel | Constructor | Imported | Builtin
     deriving (Show, Eq, Ord, Data)

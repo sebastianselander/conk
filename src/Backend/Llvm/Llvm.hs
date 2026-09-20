@@ -12,11 +12,11 @@ import Control.Lens.Getter (use, view)
 import Control.Lens.Setter (locally)
 import Control.Monad.Extra (concatMapM)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Tuple.Extra (fst3)
 import Names (Ident (..))
 import Origin (Origin (..))
 import Relude hiding (Type, and, div, exitFailure, null, or, rem)
 import Utils (catMaybesSnd, mapWithIndexM)
-import Data.Tuple.Extra (fst3)
 
 assemble :: Program -> Ir
 assemble (Program defs) =

@@ -4,13 +4,13 @@
 
 module Frontend.Renamer.Pretty where
 
+import Frontend.Parser.Utils (namespaceSeparator)
 import Frontend.Renamer.Types
 import Frontend.Types
 import Names (Ident (..))
 import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Relude hiding (intercalate)
-import Frontend.Parser.Utils (namespaceSeparator)
 
 prettyRenamer :: (Pretty a) => a -> Text
 prettyRenamer = show . Pretty.pretty
@@ -157,7 +157,7 @@ prettyExpr7 :: ExprRn -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var (_,namespace,_) name) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
+prettyExpr7 (Var (_, namespace, _) name) = Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))
@@ -211,7 +211,8 @@ instance Pretty LamArgRn where
     pretty (LamArg (_, Nothing, namespace) name) =
         Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name
     pretty (LamArg (_, Just ty, namespace) name) =
-        Pretty.parens $ Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":" <+> Pretty.pretty ty
+        Pretty.parens $ Pretty.pretty namespace <> namespaceSeparator <> Pretty.pretty name <> ":"
+            <+> Pretty.pretty ty
 
 instance Pretty LitRn where
     pretty lit = case lit of

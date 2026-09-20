@@ -31,7 +31,11 @@ errorCon errName con@(NormalC nm _) = do
         name = getName con
         pats = map (VarP . mkName . return) $ take args ['a' ..]
         vars = map (VarE . mkName . return) $ take args ['a' ..]
-        exp = InfixE (Just $ VarE (mkName "throwError")) (VarE $ mkName "$") (Just $ foldl' AppE (ConE (mkName name)) vars)
+        exp =
+            InfixE
+                (Just $ VarE (mkName "throwError"))
+                (VarE $ mkName "$")
+                (Just $ foldl' AppE (ConE (mkName name)) vars)
     return
         [ SigD (mkName (small name)) (constraint ty')
         , FunD (mkName (small name)) [Clause pats (NormalB exp) []]
@@ -41,7 +45,11 @@ errorCon _ _ = error "Not a normal constructor"
 validateCon :: String -> Con -> Q [Dec]
 validateCon errName con@(NormalC nm _) = do
     ty <- reifyType nm
-    let constraint = ForallT [] [AppT (AppT (ConT (mkName "MonadValidate")) (AppT ListT (ConT (mkName errName)))) (VarT (mkName "m"))]
+    let constraint =
+            ForallT
+                []
+                [ AppT (AppT (ConT (mkName "MonadValidate")) (AppT ListT (ConT (mkName errName)))) (VarT (mkName "m"))
+                ]
     let ty' = delinearize (genLast ty)
     let ty'' = delinearize (unitLast ty)
     let args = nArgs ty'
@@ -50,9 +58,31 @@ validateCon errName con@(NormalC nm _) = do
         nameDispute = name
         pats = map (VarP . mkName . return) $ take args ['a' ..]
         vars = map (VarE . mkName . return) $ take args ['a' ..]
-        refute = InfixE (Just $ VarE (mkName "refute")) (VarE $ mkName "$") (Just $ InfixE (Just $ VarE (mkName "return")) (VarE $ mkName "$") (Just $ foldl' AppE (ConE (mkName name)) vars))
-        dispute = InfixE (Just $ VarE (mkName "dispute")) (VarE $ mkName "$") (Just $ InfixE (Just $ VarE (mkName "return")) (VarE $ mkName "$") (Just $ foldl' AppE (ConE (mkName name)) vars))
-        dispute' = InfixE (Just dispute) (VarE $ mkName ">>") (Just $ AppE (VarE $ mkName "pure") (AppE (ConE (mkName "TypeX")) (ConE (mkName "UnsolvableX"))))
+        refute =
+            InfixE
+                (Just $ VarE (mkName "refute"))
+                (VarE $ mkName "$")
+                ( Just
+                    $ InfixE
+                        (Just $ VarE (mkName "return"))
+                        (VarE $ mkName "$")
+                        (Just $ foldl' AppE (ConE (mkName name)) vars)
+                )
+        dispute =
+            InfixE
+                (Just $ VarE (mkName "dispute"))
+                (VarE $ mkName "$")
+                ( Just
+                    $ InfixE
+                        (Just $ VarE (mkName "return"))
+                        (VarE $ mkName "$")
+                        (Just $ foldl' AppE (ConE (mkName name)) vars)
+                )
+        dispute' =
+            InfixE
+                (Just dispute)
+                (VarE $ mkName ">>")
+                (Just $ AppE (VarE $ mkName "pure") (AppE (ConE (mkName "TypeX")) (ConE (mkName "UnsolvableX"))))
     return
         [ SigD (mkName (small nameRefute)) (constraint ty')
         , FunD (mkName (small nameRefute)) [Clause pats (NormalB refute) []]

@@ -10,6 +10,8 @@ import Control.Monad.Validate
 import Data.Text (intercalate, pack)
 import Data.Text qualified as Text
 import Frontend.Parser.Pretty ()
+import Frontend.Parser.Types (ImportPar)
+import Frontend.Parser.Utils (CustomParseError)
 import Frontend.Renamer.Pretty ()
 import Frontend.Renamer.Types (ExprRn, PatternRn)
 import Frontend.TH
@@ -20,10 +22,8 @@ import Frontend.Types (SourceInfo (..), Span (..))
 import Names (Ident, Namespace, getOriginalName', renameBack)
 import Relude hiding (All, First, intercalate)
 import Text.Megaparsec (unPos)
-import Utils (indent, quote)
-import Frontend.Parser.Types (ImportPar)
 import Text.Megaparsec.Error (ParseErrorBundle, errorBundlePretty)
-import Frontend.Parser.Utils (CustomParseError)
+import Utils (indent, quote)
 
 data RnError
     = UnboundVariable SourceInfo Ident

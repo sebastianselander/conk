@@ -67,8 +67,8 @@ type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
 
-    -- | ImportQualified !(XImport a) Namespace -- import foo.bar.baz
-    -- | ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
+-- \| ImportQualified !(XImport a) Namespace -- import foo.bar.baz
+-- \| ImportAs !(XImport a) Namespace Ident -- import foo.bar as baz
 
 data Import a
     = ImportExplicit !(XImportExplicit a) Namespace [Ident] -- import foo (bar, baz)

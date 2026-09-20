@@ -1,8 +1,8 @@
 module Backend.Desugar.Breaks where
 
 import Backend.Desugar.Types
+import Data.Generics (everywhere, mkT)
 import Relude
-import Data.Generics (mkT, everywhere)
 
 simplifyBreakAndReturn :: Program -> Program
 simplifyBreakAndReturn = everywhere (mkT go)
@@ -30,9 +30,9 @@ isReturn (Typed _ (Return _)) = True
 isReturn _ = False
 
 takeWhilePlusOne :: (a -> Bool) -> [a] -> [a]
-takeWhilePlusOne f = go 
+takeWhilePlusOne f = go
   where
     go [] = []
-    go (x:xs) 
+    go (x : xs)
         | f x = x : go xs
         | otherwise = [x]

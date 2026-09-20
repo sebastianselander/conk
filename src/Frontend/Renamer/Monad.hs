@@ -132,7 +132,7 @@ isBuiltin namespace name =
             builtins
             (Map.lookup name <=< Map.lookup namespace)
 
-doesNamespaceExist :: MonadReader Ctx m => Namespace -> m Bool
+doesNamespaceExist :: (MonadReader Ctx m) => Namespace -> m Bool
 doesNamespaceExist namespace = views namespaces (Set.member namespace)
 
 {-| Checks if a variable is bound in the closest scope

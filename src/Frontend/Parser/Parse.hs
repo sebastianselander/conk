@@ -1,23 +1,23 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module Frontend.Parser.Parse (parse) where
 
 import Data.Map qualified as Map
+import Data.Maybe (fromJust)
 import Data.Tuple.Extra (uncurry3)
 import Frontend.Parser.Types
 import Frontend.Parser.Utils
 import Frontend.Types
+import Names (Ident (Ident), Namespace (Namespace), mkNamespace)
 import Relude hiding (break, span)
+import System.FilePath (dropExtension)
 import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char.Lexer qualified as P
-import Utils (File(..))
-import Names (mkNamespace, Ident (Ident), Namespace (Namespace))
-import System.FilePath (dropExtension)
-import Data.Maybe (fromJust)
+import Utils (File (..))
 
 parse' ::
     BindingPowerTable PrefixOp BinOp Void ->
@@ -25,7 +25,12 @@ parse' ::
     Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse' table file =
     flip runReader table
-        $ P.runParserT (Program (mkNamespace (dropExtension file.name)) <$> (lexeme (return ()) *> P.many definition <* P.eof)) file.name file.content
+        $ P.runParserT
+            ( Program (mkNamespace (dropExtension file.name))
+                <$> (lexeme (return ()) *> P.many definition <* P.eof)
+            )
+            file.name
+            file.content
 
 parse :: File -> Either (ParseErrorBundle Text CustomParseError) ProgramPar
 parse = parse' defaultBindingPowerTable
@@ -43,7 +48,11 @@ import_ = do
         <* semicolon
 
 namespace :: Parser Namespace
-namespace = Namespace . fromList . fmap (\(Ident name) -> name) <$> lexeme (P.sepBy identifier (P.hidden namespaceSeparator))
+namespace =
+    Namespace
+        . fromList
+        . fmap (\(Ident name) -> name)
+        <$> lexeme (P.sepBy identifier (P.hidden namespaceSeparator))
 
 datatype :: Parser AdtPar
 datatype = do
@@ -305,7 +314,7 @@ atom =
     variable :: Parser ExprPar
     variable = do
         gs <- spanStart
-        names <- lexeme (P.sepBy1  (identifier <|> upperIdentifier) (P.hidden namespaceSeparator))
+        names <- lexeme (P.sepBy1 (identifier <|> upperIdentifier) (P.hidden namespaceSeparator))
         let name = fromJust (viaNonEmpty last names)
         let namespace = Namespace . fmap (\(Ident name) -> name) . fromList <$> viaNonEmpty init names
         let namespaceOpt = case viaNonEmpty init names of

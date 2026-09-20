@@ -14,8 +14,7 @@ import Relude hiding (exitFailure, exitSuccess)
 prelude :: ([Decl], Text)
 prelude =
     foldl'
-        ( \(decls, acc) (decl, body) -> (decl : decls, acc <> "\n" <> addTxt decl body )
-        )
+        (\(decls, acc) (decl, body) -> (decl : decls, acc <> "\n" <> addTxt decl body))
         ([], "")
         $ fmap
             (\(_, b, c) -> (b, c))
@@ -28,7 +27,6 @@ prelude =
             , exitFailure
             , printInt
             ]
-
   where
     addTxt decl Nothing = llvmOut decl
     addTxt _ (Just body) = body

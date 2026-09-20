@@ -62,10 +62,12 @@ instance Pretty Decl where
             <+> pretty ty
             <+> "@"
             <> pretty name
-            <> parens (concatWith
-                (surround (comma <> space))
-                (fmap pretty args)
-            <> if ellipsis == Ellipsis then ", ..." else "")
+            <> parens
+                ( concatWith
+                    (surround (comma <> space))
+                    (fmap pretty args)
+                    <> if ellipsis == Ellipsis then ", ..." else ""
+                )
 
 instance Pretty Type where
     pretty = \case

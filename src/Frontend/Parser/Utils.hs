@@ -14,7 +14,7 @@ import Data.Text (pack, unpack)
 import Frontend.Types
 import Names (Ident (..))
 import Relude hiding (span)
-import Text.Megaparsec ( Pos, customFailure, (<?>))
+import Text.Megaparsec (Pos, customFailure, (<?>))
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
 import Text.Megaparsec.Char.Lexer qualified as L
@@ -29,10 +29,10 @@ data CustomParseError = Keyword Text | WildCardName
 
 instance P.ShowErrorComponent CustomParseError where
     showErrorComponent = \case
-           Keyword word -> "'" <> unpack word <> "' is a keyword"
-           WildCardName  -> "Can not use '_' as a variable name"
+        Keyword word -> "'" <> unpack word <> "' is a keyword"
+        WildCardName -> "Can not use '_' as a variable name"
 
-namespaceSeparator :: IsString s => s
+namespaceSeparator :: (IsString s) => s
 namespaceSeparator = "::"
 
 keywords :: [Text]
