@@ -52,7 +52,7 @@ instance Pretty Ident where
     pretty (Ident name) = pretty name
 
 instance Pretty Namespace where
-    pretty (Namespace list) = concatWith (surround dot) $ fmap pretty list
+    pretty (Namespace list) = concatWith (surround "::") $ fmap pretty list
 
 intercalate :: Text -> [Ident] -> Ident
 intercalate _ [] = error "INTERNAL ERROR: impossible"
