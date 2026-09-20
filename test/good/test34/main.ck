@@ -1,6 +1,6 @@
-import inc (inc);
+import basic;
 
 def main() {
-    printInt(inc(68));
-    printChar('\n')
+    std.printInt(basic.inc(68));
+    std.printChar('\n')
 }
