@@ -6,7 +6,7 @@ module Frontend.Parser.Types where
 import Data.Data (Data)
 import Frontend.Types
 import Names (Ident, Namespace)
-import Relude hiding (Type, intercalate, replicate)
+import Relude hiding (Type, intercalate, replicate, TyVar)
 
 data Par
     deriving (Data)
@@ -100,6 +100,7 @@ type instance XTyLit Par = NoExtField
 type instance XTyFun Par = NoExtField
 type instance XType Par = DataConCantHappen
 type instance XTyCon Par = NoExtField
+type instance XTypeVar Par = NoExtField
 
 type instance XLoop Par = SourceInfo
 type instance XLam Par = SourceInfo

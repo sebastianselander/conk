@@ -4,7 +4,7 @@
 module Frontend.Renamer.Rn (rename) where
 
 import Control.Lens (locally, modifying, view)
-import Control.Monad.Validate (MonadValidate)
+import Control.Monad.Validate (MonadValidate (dispute))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Frontend.Builtin (builtInNames, builtIns)
@@ -16,6 +16,7 @@ import Frontend.Types
 import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
+import Frontend.Utils (isUnique)
 
 rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename namespaces symbolMap prg@(Program namespace _) =
@@ -70,12 +71,15 @@ uniqueDefs = go builtInNames
             else go (Set.insert name seen) xs
 
 rnFunction :: FnPar -> Gen FnRn
-rnFunction (Fn pos name arguments returnType block) = do
+rnFunction (Fn pos name tyParams arguments returnType block) = do
     resetArgs
+    case isUnique tyParams of
+        Nothing -> pure ()
+        Just (loc, duped) -> dispute [ConflictingTypeParameter loc duped]
     arguments <- rnArgs arguments
     returnType <- rnType returnType
     statements <- rnBlock block
-    return $ Fn pos name arguments returnType statements
+    return $ Fn pos name tyParams arguments returnType statements
 
 rnDef :: DefPar -> Gen DefRn
 rnDef (DefFn fn) = DefFn <$> rnFunction fn
@@ -297,7 +301,7 @@ getFunctionNames :: ProgramPar -> [(SourceInfo, Ident)]
 getFunctionNames = listify' fnName
   where
     fnName :: FnPar -> Maybe (SourceInfo, Ident)
-    fnName (Fn info name _ _ _) = Just (info, name)
+    fnName (Fn info name _ _ _ _) = Just (info, name)
 
 rnArgs :: (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [ArgPar] -> m [ArgRn]
 rnArgs = fmap (reverse . snd) . foldlM f mempty

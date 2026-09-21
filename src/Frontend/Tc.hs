@@ -18,7 +18,7 @@ import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
 import Frontend.Types
-import Names (Ident, Names, Namespace, getOriginalName')
+import Names (Ident (Ident), Names, Namespace, getOriginalName')
 import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
 import Table (DefTable, builtIns, functions)
@@ -51,7 +51,7 @@ getFuns :: (Data a) => a -> [(Ident, (TypeTc, SourceInfo))]
 getFuns = listify' f
   where
     f :: FnRn -> Maybe (Ident, (TypeTc, SourceInfo))
-    f (Fn info name args returnType _) =
+    f (Fn info name tyParams args returnType _) =
         let funTy = TyFun NoExtField (fmap typeOf args) (typeOf returnType)
          in Just (name, (funTy, info))
 
@@ -144,7 +144,7 @@ tcFunction ::
     DefTable TypeTc SourceInfo ->
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
-tcFunction names defTable fun@(Fn _ _ args rt _) =
+tcFunction names defTable fun@(Fn _ _ tyParams args rt _) =
     let varTable =
             foldr
                 ( uncurry Map.insert
@@ -164,7 +164,7 @@ tcFunction names defTable fun@(Fn _ _ args rt _) =
      in run ctx env $ go fun
   where
     go :: Fn Rn -> TcM (Fn Tc)
-    go (Fn loc name args rt block) =
+    go (Fn loc name tyParams args rt block) =
         locally Ctx.currentFun (const fun) $ do
             args <- mapM infArg args
             let retTy = typeOf rt
@@ -177,7 +177,7 @@ tcFunction names defTable fun@(Fn _ _ args rt _) =
                 Block info stmts Nothing -> do
                     stmts <- mapM infStmt stmts
                     pure $ Block (info, Any) stmts Nothing
-            pure (Fn NoExtField name args retTy block)
+            pure (Fn NoExtField name tyParams args retTy block)
 
 inferBlock :: BlockRn -> TcM BlockTc
 inferBlock (Block info statements tailExpression) = do
@@ -197,7 +197,7 @@ tcBlock expectedTy (Block info statements tailExpression) = do
         Just tail -> Just <$> tcExpr expectedTy tail
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
 
-infArg :: ArgRn -> TcM ArgTc
+infArg :: Monad m => ArgRn -> m ArgTc
 infArg (Arg _ name ty) = pure $ Arg NoExtField name (typeOf ty)
 
 infStmt :: StmtRn -> TcM StmtTc

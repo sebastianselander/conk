@@ -28,7 +28,7 @@ check prg@(Program _ defs) = case lefts $ map checkDef defs of
     xs -> Left $ concat xs
 
 checkFunction :: FnRn -> Either [ChError] ()
-checkFunction (Fn info name _ returnType block) = runCheck (Ctx False) $ case returnType of
+checkFunction (Fn info name tyParams _ returnType block) = runCheck (Ctx False) $ case returnType of
     TyLit NoExtField Unit -> breakBlock block
     _ -> case block of
         Block _ _ (Just _) -> breakBlock block

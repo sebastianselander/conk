@@ -108,11 +108,11 @@ dsProgram (Tc.Program Tc.NoExtField defs) = do
     pure $ Program $ fmap (uncurry3 StaticString) strings <> toList lifteds <> defs
 
 isMain :: Tc.FnTc -> Bool
-isMain (Tc.Fn NoExtField (Ident "main") _ _ _) = True
+isMain (Tc.Fn NoExtField (Ident "main") tyParams _ _ _) = True
 isMain _ = False
 
 dsFunction :: Tc.FnTc -> DsM Def
-dsFunction def@(Tc.Fn NoExtField name args returnType (Tc.Block (_info, _) stmts tail)) = do
+dsFunction def@(Tc.Fn NoExtField name tyParams args returnType (Tc.Block (_info, _) stmts tail)) = do
     assign nameCounter 0 -- Start the name counter from 0 for each local scope
     args <- (EnvArg (PointerType Void) :) <$> mapM dsArg args
     returnType <- mkClosureType returnType

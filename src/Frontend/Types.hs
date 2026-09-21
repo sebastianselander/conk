@@ -14,6 +14,7 @@ import Relude hiding (Type, concat, intercalate, replicate)
 import Relude qualified
 import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
+import Prettyprinter (Pretty (pretty))
 
 data NoExtField = NoExtField
     deriving (Show, Eq, Ord, Data, Generic)
@@ -62,7 +63,10 @@ data Def a
 type family XDef a
 deriving instance (Forall Show a) => Show (Def a)
 
-data Fn a = Fn !(XFn a) Ident [Arg a] (Type a) (Block a)
+data TyParamList = Missing | Params SourceInfo (NonEmpty TyVar)
+    deriving (Show, Eq, Ord, Data)
+
+data Fn a = Fn !(XFn a) Ident TyParamList [Arg a] (Type a) (Block a)
 type family XFn a
 
 deriving instance (Forall Show a) => Show (Fn a)
@@ -98,18 +102,34 @@ type family XArg a
 deriving instance (Forall Show a) => Show (Arg a)
 
 -- Type
+
+newtype TyVar = TyVar Ident
+    deriving (Eq, Ord, Show, Data)
+
+instance Pretty TyVar where
+    pretty (TyVar ident) = pretty ident
+
+
+
 data Type a
     = TyLit !(XTyLit a) TyLit
     | TyFun !(XTyFun a) [Type a] (Type a)
-    | Type !(XType a)
     | TyCon !(XTyCon a) Ident
+    | TypeVar !(XTypeVar a) TyVar
+    | Type !(XType a)
 type family XTyLit a
 type family XTyFun a
 type family XType a
 type family XTyCon a
+type family XTypeVar a
 
 coerceType ::
-    (XTyLit t1 ~ XTyLit t2, XTyFun t1 ~ XTyFun t2, XType t1 ~ XType t2, XTyCon t1 ~ XTyCon t2) =>
+    ( XTyLit t1 ~ XTyLit t2
+    , XTyFun t1 ~ XTyFun t2
+    , XType t1 ~ XType t2
+    , XTyCon t1 ~ XTyCon t2
+    , XTypeVar t1 ~ XTypeVar t2
+    ) =>
     Type t1 ->
     Type t2
 coerceType ty = case ty of
@@ -117,6 +137,7 @@ coerceType ty = case ty of
     TyFun a b c -> TyFun a (fmap coerceType b) (coerceType c)
     TyCon a b -> TyCon a b
     Type a -> Type a
+    TypeVar a b -> TypeVar a b
 
 data TyLit = Unit | String | Int | Double | Char | Bool
     deriving (Show, Eq, Ord, Enum, Data)
@@ -289,4 +310,5 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XPVar a)
     , c (XPEnumCon a)
     , c (XPFunCon a)
+    , c (XTypeVar a)
     )

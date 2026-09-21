@@ -103,6 +103,7 @@ type instance XTyLit Rn = NoExtField
 type instance XTyFun Rn = NoExtField
 type instance XType Rn = DataConCantHappen
 type instance XTyCon Rn = NoExtField
+type instance XTypeVar Rn = NoExtField
 
 type instance XLoop Rn = SourceInfo
 type instance XLam Rn = XLam Par

@@ -18,7 +18,7 @@ import Frontend.TH
 import Frontend.Typechecker.Ctx (Ctx, exprStack, names)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types
-import Frontend.Types (SourceInfo (..), Span (..))
+import Frontend.Types (SourceInfo (..), Span (..), TyVar)
 import Names (Ident, Namespace, getOriginalName', renameBack)
 import Relude hiding (All, First, intercalate)
 import Text.Megaparsec (unPos)
@@ -28,6 +28,7 @@ import Utils (indent, quote)
 data RnError
     = UnboundVariable SourceInfo Ident
     | ConflictingDefinitionArgument SourceInfo Ident
+    | ConflictingTypeParameter SourceInfo TyVar
     | DuplicateToplevels SourceInfo Ident
     | UnboundImport SourceInfo Namespace
     deriving (Show)
@@ -84,6 +85,7 @@ reportRnError err = case err of
             info
             (unwords ["Variable", quote $ pThing name, "not in scope"])
     ConflictingDefinitionArgument info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
+    ConflictingTypeParameter info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
     DuplicateToplevels info name -> combineRn info (unwords ["Definition", quote $ pThing name, "already declared earlier"])
     UnboundImport loc namespace -> combineRn loc (unwords ["Import", quote $ pThing namespace, "does not exist"])
 

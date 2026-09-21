@@ -36,6 +36,7 @@ library
     Backend.Types
     Compile
     Frontend.Builtin
+    Frontend.Utils
     Frontend.Error
     Frontend.Parser.Parse
     Frontend.Parser.Types

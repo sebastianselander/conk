@@ -79,7 +79,7 @@ gatherSymbols =
   where
     nameOf :: Def Par -> Maybe Ident
     nameOf = \case
-        DefFn (Fn _ name _ _ _) -> Just name
+        DefFn (Fn _ name _ _ _ _) -> Just name
         DefAdt (Adt _ name _) -> Just name
         DefImport _ -> Nothing
 

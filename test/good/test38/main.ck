@@ -1,4 +1,4 @@
-def id<A>(x: A) {
+def id<A>(x: A) -> A {
     x
 }
 

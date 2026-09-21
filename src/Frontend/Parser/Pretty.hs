@@ -63,10 +63,17 @@ instance Pretty ConstructorPar where
                         (fmap Pretty.pretty types)
                     )
 
+instance Pretty TyParamList where
+    pretty Missing = ""
+    pretty (Params _ xs) =
+        Pretty.angles
+            $ Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (Pretty.pretty <$> toList xs)
+
 instance Pretty FnPar where
-    pretty (Fn _ (Ident name) args ty block) =
+    pretty (Fn _ (Ident name) tyParams args ty block) =
         "def"
             <+> Pretty.pretty name
+                <> Pretty.pretty tyParams
                 <> Pretty.parens
                     ( Pretty.concatWith
                         (Pretty.surround Pretty.comma)
@@ -120,6 +127,7 @@ prettyType2 = \case
         Char -> "char"
         Bool -> "bool"
     ty@TyFun {} -> Pretty.parens (Pretty.pretty ty)
+    TypeVar _ tyvar -> Pretty.pretty tyvar
 
 instance Pretty ExprPar where
     pretty = prettyExpr1

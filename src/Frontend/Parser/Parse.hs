@@ -12,7 +12,7 @@ import Frontend.Parser.Types
 import Frontend.Parser.Utils
 import Frontend.Types
 import Names (Ident (Ident), Namespace (Namespace), mkNamespace)
-import Relude hiding (break, span)
+import Relude hiding (TyVar, break, span)
 import System.FilePath (dropExtension)
 import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
@@ -46,6 +46,13 @@ import_ = do
         , XImport . ImportQualified ns <$> spanEnd gs
         ]
         <* semicolon
+
+tyParamList :: Parser TyParamList
+tyParamList = do
+    gs <- spanStart
+    params <- P.optional (angles $ commaSepEnd1 (lexeme (TyVar <$> upperIdentifier)))
+    loc <- spanEnd gs
+    pure (maybe Missing (Params loc) params)
 
 namespace :: Parser Namespace
 namespace =
@@ -81,11 +88,12 @@ function = do
     gs <- spanStart
     lexeme (keyword "def")
     name <- lexeme identifier
+    tyParams <- tyParamList
     args <- parens (commaSep argument)
     ty <- P.option (TyLit NoExtField Unit) (lexeme (keyword "->") *> type_)
     expressions <- block
     info <- spanEnd gs
-    pure (Fn info name args ty expressions)
+    pure (Fn info name tyParams args ty expressions)
 
 argument :: Parser ArgPar
 argument = do

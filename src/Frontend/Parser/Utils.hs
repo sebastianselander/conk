@@ -134,6 +134,9 @@ commaSep p = P.sepBy p (P.hidden $ char ',')
 commaSepEnd :: Parser a -> Parser [a]
 commaSepEnd p = P.sepEndBy p (P.hidden $ char ',')
 
+commaSepEnd1 :: Parser a -> Parser (NonEmpty a)
+commaSepEnd1 p = fromList <$> P.sepEndBy1 p (P.hidden $ char ',')
+
 stringLiteral :: Parser Text
 stringLiteral = P.hidden (P.char '"') >> pack <$> P.manyTill L.charLiteral (P.hidden (P.char '"'))
 
