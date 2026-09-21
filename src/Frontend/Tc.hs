@@ -168,7 +168,7 @@ tcFunction names defTable fun@(Fn _ _ args rt _) =
         locally Ctx.currentFun (const fun) $ do
             args <- mapM infArg args
             let retTy = typeOf rt
-            unify @_ @TypeTc loc (TyLit NoExtField Unit) retTy
+            -- unify @_ @TypeTc loc (TyLit NoExtField Unit) retTy -- TODO: only for main
             block <- locally Ctx.returnType (const retTy) $ case block of
                 Block info stmts (Just expr) -> do
                     stmts <- mapM infStmt stmts
