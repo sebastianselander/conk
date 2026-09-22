@@ -60,7 +60,7 @@ instance Pretty ConstructorRn where
                     )
 
 instance Pretty TyParamList where
-    pretty Missing = ""
+    pretty (Params _ []) = ""
     pretty (Params _ xs) =
         Pretty.angles
             $ Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (Pretty.pretty <$> toList xs)

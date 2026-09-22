@@ -22,7 +22,7 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
-import Frontend.Builtin (builtIns)
+import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
@@ -31,7 +31,7 @@ import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
 import Frontend.Tc (TypeCons (..), getFuns, getTypesAndCons, tc)
 import Frontend.Typechecker.Pretty (pThing)
-import Frontend.Typechecker.Types (ProgramTc)
+import Frontend.Typechecker.Types (ProgramTc, Tc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
 import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
@@ -101,7 +101,7 @@ compile files = do
 
     let defTable =
             Table
-                builtIns
+                builtins
                 (Map.unions $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (getFuns defs))) res)
                 ( Map.unions
                     $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (types (getTypesAndCons defs)))) res

@@ -49,6 +49,7 @@ library
     Frontend.StatementCheck
     Frontend.Tc
     Frontend.TH
+    Frontend.Phase
     Frontend.Typechecker.Ctx
     Frontend.Typechecker.Pretty
     Frontend.Typechecker.Types

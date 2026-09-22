@@ -13,8 +13,8 @@ module Frontend.Renamer.Monad
       boundArg,
       boundCons,
       allVars,
-      isBuiltin,
-      emptyCtx,
+      lookupBuiltin,
+      createCtx,
       emptyEnv,
       localDefinitions,
       importedDefinitions,
@@ -33,6 +33,7 @@ module Frontend.Renamer.Monad
       insertImportName,
       namespaces,
       doesNamespaceExist,
+      userDefinedTypes,
     ) where
 
 import Control.Lens hiding ((<|))
@@ -42,10 +43,11 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Frontend.Error
-import Frontend.Renamer.Types (Boundedness (..))
+import Frontend.Renamer.Types (AdtRn, Boundedness (..))
 import Frontend.Types (SourceInfo)
 import Names (Ident (..), Namespace)
 import Relude hiding (Map, head)
+import Frontend.Builtin (Builtins, isBuiltin)
 
 data Env = Env
     { _newToOld :: Map Ident Ident
@@ -61,9 +63,10 @@ data Env = Env
 data Ctx = Ctx
     { _localDefinitions :: Set Ident
     , _namespace :: Namespace
-    , _builtins :: Map Namespace (Map Ident Ident)
+    , _builtins :: Builtins ()
     , _allVars :: Map Namespace (Set Ident)
     , _namespaces :: Set Namespace
+    , _userDefinedTypes :: Set AdtRn
     }
     deriving (Show)
 
@@ -92,9 +95,14 @@ emptyEnv imported =
         , _importName = mempty
         }
 
-emptyCtx ::
-    Namespace -> Map Namespace (Map Ident Ident) -> Map Namespace (Set Ident) -> Set Namespace -> Ctx
-emptyCtx = Ctx mempty
+createCtx ::
+    Namespace ->
+    Builtins () ->
+    Map Namespace (Set Ident) ->
+    Set Namespace ->
+    Set AdtRn ->
+    Ctx
+createCtx = Ctx mempty
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
 runGen env ctx =
@@ -125,12 +133,12 @@ boundCons name = uses constructors (fmap (,name) . Map.lookup name)
 boundArg :: (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Namespace, Ident))
 boundArg name = uses arguments (Map.lookup name)
 
-isBuiltin :: (MonadReader Ctx m) => Namespace -> Ident -> m (Maybe (Namespace, Ident))
-isBuiltin namespace name =
-    fmap (namespace,)
-        <$> views
-            builtins
-            (Map.lookup name <=< Map.lookup namespace)
+lookupBuiltin :: (MonadReader Ctx m) => Namespace -> Ident -> m (Maybe (Namespace, Ident))
+lookupBuiltin namespace name = do
+    map <- view builtins
+    if isBuiltin namespace name map
+      then pure (Just (namespace, name))
+      else pure Nothing
 
 doesNamespaceExist :: (MonadReader Ctx m) => Namespace -> m Bool
 doesNamespaceExist namespace = views namespaces (Set.member namespace)

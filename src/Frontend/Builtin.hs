@@ -1,45 +1,60 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Frontend.Builtin where
 
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Frontend.Renamer.Types (Rn)
 import Frontend.Types
-    ( NoExtField (NoExtField),
+    ( Forall,
+      NoExtField (NoExtField),
       SourceInfo (SourceInfo),
       TyLit (..),
       Type (..),
-      XTyFun,
-      XTyLit,
       emptySpan,
     )
 import Names (Ident (..), Namespace (Namespace))
 import Relude hiding (Type)
 
-builtInNames :: Set Ident
-builtInNames = Set.unions [Set.fromList (Map.keys el) | el <- Map.elems (builtIns @Rn)]
+newtype Builtins a = Builtins (Map Namespace (Map Ident (Type a, SourceInfo)))
 
-builtIns ::
-    (XTyFun a ~ NoExtField, XTyLit a ~ NoExtField) => Map Namespace (Map Ident (Type a, SourceInfo))
-builtIns =
-    Map.singleton
-        (Namespace ("std" :| []))
-        ( Map.fromList
-            [
-                ( Ident "printInt"
-                , (TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in")
-                )
-            ,
-                ( Ident "printString"
-                ,
-                    ( TyFun NoExtField [TyLit NoExtField String] (TyLit NoExtField Unit)
-                    , SourceInfo emptySpan "Built in"
+deriving instance (Forall Show a) => Show (Builtins a)
+
+names :: Builtins a -> Set Ident
+names (Builtins builtins) = Set.unions [Set.fromList (Map.keys el) | el <- Map.elems builtins]
+
+isBuiltin :: Namespace -> Ident -> Builtins a -> Bool
+isBuiltin namespace ident (Builtins m) = isJust $ Map.lookup ident =<< Map.lookup namespace m
+
+lookup :: Namespace -> Ident -> Builtins a -> Maybe (Type a, SourceInfo)
+lookup namespace name (Builtins m) = Map.lookup name =<< Map.lookup namespace m
+
+builtins :: Builtins ()
+builtins =
+    Builtins
+        $ Map.singleton
+            (Namespace ("std" :| []))
+            ( Map.fromList
+                [
+                    ( Ident "printInt"
+                    ,
+                        ( TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit)
+                        , SourceInfo emptySpan "Built in"
+                        )
                     )
-                )
-            ,
-                ( Ident "printChar"
-                , (TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit), SourceInfo emptySpan "Built in")
-                )
-            ]
-        )
+                ,
+                    ( Ident "printString"
+                    ,
+                        ( TyFun NoExtField [TyLit NoExtField String] (TyLit NoExtField Unit)
+                        , SourceInfo emptySpan "Built in"
+                        )
+                    )
+                ,
+                    ( Ident "printChar"
+                    ,
+                        ( TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit)
+                        , SourceInfo emptySpan "Built in"
+                        )
+                    )
+                ]
+            )

@@ -7,24 +7,23 @@ import Control.Lens (locally, modifying, view)
 import Control.Monad.Validate (MonadValidate (dispute))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Frontend.Builtin (builtInNames, builtIns)
+import Frontend.Builtin (builtins)
 import Frontend.Error
 import Frontend.Parser.Types
 import Frontend.Renamer.Monad
 import Frontend.Renamer.Types
 import Frontend.Types
+import Frontend.Utils (isUnique)
 import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
-import Frontend.Utils (isUnique)
+import qualified Frontend.Builtin as Builtins
 
 rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename namespaces symbolMap prg@(Program namespace _) =
-    runGen (emptyEnv symbolMap) (emptyCtx namespace (resolve (builtIns @Par)) allVars namespaces)
+    runGen (emptyEnv symbolMap) (createCtx namespace builtins allVars namespaces undefined)
         $ rnProgram prg
   where
-    resolve :: Map Namespace (Map Ident b) -> Map Namespace (Map Ident Ident)
-    resolve = Map.map (Map.mapWithKey const)
     allVars :: Map Namespace (Set Ident)
     allVars =
         foldr (\(k, v) acc -> Map.insertWith Set.union k (Set.singleton v) acc) mempty
@@ -61,7 +60,7 @@ sortDefs = sortBy f
     f (DefFn _) _ = GT
 
 uniqueDefs :: (MonadValidate [RnError] m) => [(SourceInfo, Ident)] -> m ()
-uniqueDefs = go builtInNames
+uniqueDefs = go (Builtins.names builtins)
   where
     go :: (MonadValidate [RnError] m) => Set Ident -> [(SourceInfo, Ident)] -> m ()
     go _ [] = pure ()
@@ -76,9 +75,9 @@ rnFunction (Fn pos name tyParams arguments returnType block) = do
     case isUnique tyParams of
         Nothing -> pure ()
         Just (loc, duped) -> dispute [ConflictingTypeParameter loc duped]
-    arguments <- rnArgs arguments
-    returnType <- rnType returnType
-    statements <- rnBlock block
+    arguments <- rnArgs tyParams arguments
+    returnType <- renameType tyParams returnType
+    statements <- rnBlock tyParams block
     return $ Fn pos name tyParams arguments returnType statements
 
 rnDef :: DefPar -> Gen DefRn
@@ -148,97 +147,100 @@ rnConstructor = \case
     FunCons loc name types ->
         checkAndinsertConstrutor loc name
             >> FunCons loc name
-            <$> mapM rnType types
+            <$> mapM (renameType emptyTyParamList) types
 
-rnBlock :: BlockPar -> Gen BlockRn
-rnBlock (Block a stmts expr) =
-    uncurry (Block a) <$> newContext ((,) <$> mapM rnStatement stmts <*> mapM rnExpr expr)
+rnBlock :: TyParamList -> BlockPar -> Gen BlockRn
+rnBlock tyParams (Block a stmts expr) =
+    uncurry (Block a) <$> newContext ((,) <$> mapM (rnStatement tyParams) stmts <*> mapM (rnExpr tyParams) expr)
 
-rnStatement :: StmtPar -> Gen StmtRn
-rnStatement = \case
+rnStatement :: TyParamList -> StmtPar -> Gen StmtRn
+rnStatement tyParams = \case
     SExpr a b -> do
-        b <- rnExpr b
+        b <- rnExpr tyParams b
         pure $ SExpr a b
 
-rnExpr :: ExprPar -> Gen ExprRn
-rnExpr = \case
-    Lit info lit -> Lit info <$> rnLit lit
-    Var (info, ns) variable -> do
-        namespace <- view namespace
-        (bind, (namespace, name)) <-
-            maybe
-                ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
-                pure
-                =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported namespace variable) (pure . Just)
-                =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
-                =<< maybe
-                    ( case ns of
-                        Just namespace -> fmap (Builtin,) <$> isBuiltin namespace variable
-                        Nothing -> pure Nothing
-                    )
-                    (pure . Just)
-                =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
-                =<< ( maybe
-                        (fmap (Free,) <$> boundArg variable)
-                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
-                        =<< boundVar variable
-                    )
-        pure $ Var (info, namespace, bind) name
-    Prefix info op expr -> Prefix info op <$> rnExpr expr
-    BinOp info l op r -> do
-        l <- rnExpr l
-        r <- rnExpr r
-        pure $ BinOp info l op r
-    App info l args -> do
-        l <- rnExpr l
-        args <- mapM rnExpr args
-        pure $ App info l args
-    Let (info, ty) name expr -> do
-        expr <- rnExpr expr
-        name' <- insertVar name
-        ty <- mapM rnType ty
-        pure $ Let (info, ty) name' expr
-    Ass info variable op expr -> do
-        namespace <- view namespace
-        (bind, (namespace, name)) <-
-            maybe ((Free, (namespace, Ident "unbound")) <$ unboundVariable info variable) pure
-                =<< ( maybe
-                        (fmap (Free,) <$> boundArg variable)
-                        ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
-                        =<< boundVar variable
-                    )
-        expr <- rnExpr expr
-        pure (Ass (info, bind, namespace) name op expr)
-    Ret a b -> do
-        b' <- mapM rnExpr b
-        pure $ Ret a b'
-    EBlock info block -> EBlock info <$> rnBlock block
-    Break a expr -> do
-        b' <- mapM rnExpr expr
-        pure $ Break a b'
-    If a b true false -> do
-        b <- rnExpr b
-        true <- newContext $ rnBlock true
-        false <- newContext $ mapM rnBlock false
-        pure $ If a b true false
-    While a b block -> do
-        b <- rnExpr b
-        stmts <- newContext $ rnBlock block
-        pure $ While a b stmts
-    Loop info block -> Loop info <$> rnBlock block
-    Lam info args body -> do
-        args <- rnLamArgs args
-        body <- newContext $ rnExpr body
-        pure $ Lam info args body
-    Match info scrutinee arms -> do
-        scrutinee <- rnExpr scrutinee
-        arms <- mapM rnMatchArm arms
-        pure $ Match info scrutinee arms
+rnExpr :: TyParamList -> ExprPar -> Gen ExprRn
+rnExpr tyParams = goRnExpr
+  where
+    goRnExpr :: ExprPar -> Gen ExprRn 
+    goRnExpr = \case
+        Lit info lit -> Lit info <$> rnLit lit
+        Var (info, ns) variable -> do
+            namespace <- view namespace
+            (bind, (namespace, name)) <-
+                maybe
+                    ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
+                    pure
+                    =<< maybe (fmap (\(a, b, c) -> (a, (b, c))) <$> boundImported namespace variable) (pure . Just)
+                    =<< maybe (fmap (Constructor,) <$> boundCons variable) (pure . Just)
+                    =<< maybe
+                        ( case ns of
+                            Just namespace -> fmap (Builtin,) <$> lookupBuiltin namespace variable
+                            Nothing -> pure Nothing
+                        )
+                        (pure . Just)
+                    =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
+                    =<< ( maybe
+                            (fmap (Free,) <$> boundArg variable)
+                            ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                            =<< boundVar variable
+                        )
+            pure $ Var (info, namespace, bind) name
+        Prefix info op expr -> Prefix info op <$> goRnExpr expr
+        BinOp info l op r -> do
+            l <- goRnExpr l
+            r <- goRnExpr r
+            pure $ BinOp info l op r
+        App info l args -> do
+            l <- goRnExpr l
+            args <- mapM goRnExpr args
+            pure $ App info l args
+        Let (info, ty) name expr -> do
+            expr <- goRnExpr expr
+            name' <- insertVar name
+            ty <- mapM (renameType tyParams) ty
+            pure $ Let (info, ty) name' expr
+        Ass info variable op expr -> do
+            namespace <- view namespace
+            (bind, (namespace, name)) <-
+                maybe ((Free, (namespace, Ident "unbound")) <$ unboundVariable info variable) pure
+                    =<< ( maybe
+                            (fmap (Free,) <$> boundArg variable)
+                            ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
+                            =<< boundVar variable
+                        )
+            expr <- goRnExpr expr
+            pure (Ass (info, bind, namespace) name op expr)
+        Ret a b -> do
+            b' <- mapM goRnExpr b
+            pure $ Ret a b'
+        EBlock info block -> EBlock info <$> rnBlock tyParams block
+        Break a expr -> do
+            b' <- mapM goRnExpr expr
+            pure $ Break a b'
+        If a b true false -> do
+            b <- goRnExpr b
+            true <- newContext $ rnBlock tyParams true
+            false <- newContext $ mapM (rnBlock tyParams) false
+            pure $ If a b true false
+        While a b block -> do
+            b <- goRnExpr b
+            stmts <- newContext $ rnBlock tyParams block
+            pure $ While a b stmts
+        Loop info block -> Loop info <$> rnBlock tyParams block
+        Lam info args body -> do
+            args <- rnLamArgs tyParams args
+            body <- newContext $ goRnExpr body
+            pure $ Lam info args body
+        Match info scrutinee arms -> do
+            scrutinee <- goRnExpr scrutinee
+            arms <- mapM (rnMatchArm tyParams) arms
+            pure $ Match info scrutinee arms
 
-rnMatchArm :: MatchArmPar -> Gen MatchArmRn
-rnMatchArm (MatchArm loc pat body) = newContext $ do
+rnMatchArm :: TyParamList -> MatchArmPar -> Gen MatchArmRn
+rnMatchArm tyParams (MatchArm loc pat body) = newContext $ do
     pat <- rnPattern pat
-    body <- rnExpr body
+    body <- rnExpr tyParams body
     pure $ MatchArm loc pat body
 
 rnPattern :: PatternPar -> Gen PatternRn
@@ -266,8 +268,8 @@ rnPattern = fmap snd . go mempty
                 pure (seen <> seen' <> seen'', pat : pats)
 
 rnLamArgs ::
-    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [LamArgPar] -> m [LamArgRn]
-rnLamArgs = fmap (reverse . snd) . foldlM f mempty
+    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => TyParamList -> [LamArgPar] -> m [LamArgRn]
+rnLamArgs tyParams = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
         (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
@@ -279,7 +281,7 @@ rnLamArgs = fmap (reverse . snd) . foldlM f mempty
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
         (namespace, name) <- insertArg namespace name
-        ty <- mapM rnType ty
+        ty <- mapM (renameType tyParams) ty
         pure (seen', LamArg (info, ty, namespace) name : acc)
 
 rnLit :: LitPar -> Gen LitRn
@@ -303,8 +305,10 @@ getFunctionNames = listify' fnName
     fnName :: FnPar -> Maybe (SourceInfo, Ident)
     fnName (Fn info name _ _ _ _) = Just (info, name)
 
-rnArgs :: (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => [ArgPar] -> m [ArgRn]
-rnArgs = fmap (reverse . snd) . foldlM f mempty
+rnArgs ::
+    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
+    TyParamList -> [ArgPar] -> m [ArgRn]
+rnArgs tyParams = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
         (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
@@ -316,8 +320,15 @@ rnArgs = fmap (reverse . snd) . foldlM f mempty
         let seen' = name : seen
         when (name `elem` seen) (conflictingDefinitionArgument info name)
         (namespace, name) <- insertArg namespace name
-        ty <- rnType ty
+        ty <- renameType tyParams ty
         pure (seen', Arg (info, namespace) name ty : acc)
 
-rnType :: (Monad m) => TypePar -> m TypeRn
-rnType = pure . coerceType
+renameType :: (Monad m) => TyParamList -> TypePar -> m TypeRn
+renameType typeParams ty = case ty of
+    TyCon NoExtField name -> pure (TyCon NoExtField name)
+    TypeVar NoExtField tyvar -> pure (TypeVar NoExtField tyvar)
+    TyLit NoExtField lit -> pure (TyLit NoExtField lit)
+    TyFun NoExtField args ret -> TyFun NoExtField <$> mapM (renameType typeParams) args <*> renameType typeParams ret
+    Type unresolved
+        | isTypeVar unresolved typeParams -> pure (TypeVar NoExtField (tyVarOf unresolved))
+        | otherwise -> pure (TyCon NoExtField (nameOf unresolved))

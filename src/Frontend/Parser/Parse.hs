@@ -50,9 +50,9 @@ import_ = do
 tyParamList :: Parser TyParamList
 tyParamList = do
     gs <- spanStart
-    params <- P.optional (angles $ commaSepEnd1 (lexeme (TyVar <$> upperIdentifier)))
+    params <- P.optional (angles $ commaSepEnd (lexeme (TyVar <$> upperIdentifier)))
     loc <- spanEnd gs
-    pure (maybe Missing (Params loc) params)
+    pure (Params loc (fromMaybe [] params))
 
 namespace :: Parser Namespace
 namespace =

@@ -18,12 +18,14 @@ import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
 import Frontend.Types
-import Names (Ident (Ident), Names, Namespace, getOriginalName')
+import Names (Ident, Names, Namespace, getOriginalName')
 import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
 import Table (DefTable, builtIns, functions)
 import Table qualified as DefTable
 import Utils (chain, listify')
+import Frontend.Builtin (isBuiltin)
+import qualified Frontend.Builtin as Builtins
 
 newtype Env = Env
     { _variables :: Map Ident (TypeTc, SourceInfo)
@@ -244,9 +246,9 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
             Imported -> lookupFun namespace name
             Builtin -> do
                 builtins <- view (defTable . builtIns)
-                case Map.lookup name =<< Map.lookup namespace builtins of
-                    Just res -> pure res
-                    Nothing -> error "INTERNAL ERROR: Missing builtin"
+                case Builtins.lookup namespace name builtins of
+                    Just (ty, res) -> pure (ty, res)
+                    _ -> error "INTERNAL ERROR: Missing builtin"
         pure $ Var (info, ty, boundedness) name
     Prefix info Neg expr -> do
         expr <- tcExpr (TyLit NoExtField Int) expr
@@ -663,6 +665,8 @@ instance TypeOf TypeRn where
         TyLit a b -> TyLit a b
         TyFun a b c -> TyFun a (fmap typeOf b) (typeOf c)
         TyCon a b -> TyCon a b
+        TypeVar a b -> TypeVar a b
+        
 
 instance TypeOf LamArgTc where
     typeOf (LamArg ty _) = ty
@@ -694,6 +698,9 @@ unify' ::
 unify' info ty1 ty2 = case (ty1, ty2) of
     (TyLit _ lit1, TyLit _ lit2)
         | lit1 == lit2 -> pure ()
+        | otherwise -> void $ tyExpectedGot info [ty1] ty2
+    (TypeVar _ tvar1, TypeVar _ tvar2) 
+        | tvar1 == tvar2 -> pure ()
         | otherwise -> void $ tyExpectedGot info [ty1] ty2
     (TyFun _ l1 r1, TyFun _ l2 r2) -> do
         unless (length l1 == length l2) (void $ tyExpectedGot info [ty1] ty2)
