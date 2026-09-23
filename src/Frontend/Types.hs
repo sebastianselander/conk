@@ -71,7 +71,7 @@ deriving instance (Forall Show a) => Show (Def a)
 We don't know if type `A` is a type parameter or a concrete type when
 parsing so we use this type as a placeholder and resolve it during renaming
 -}
-newtype UnresolvedType = UnresolvedType TyVar
+data UnresolvedType = UnresolvedType SourceInfo TyVar
     deriving (Show, Eq, Ord, Data)
 
 data TyParamList = Params SourceInfo [TyVar]
@@ -81,13 +81,13 @@ emptyTyParamList :: TyParamList
 emptyTyParamList = Params emptyInfo []
 
 nameOf :: UnresolvedType -> Ident
-nameOf (UnresolvedType (TyVar name)) = name
+nameOf (UnresolvedType _ (TyVar name)) = name
 
 tyVarOf :: UnresolvedType -> TyVar
-tyVarOf (UnresolvedType tyVar) = tyVar
+tyVarOf (UnresolvedType _ tyVar) = tyVar
 
 isTypeVar :: UnresolvedType -> TyParamList -> Bool
-isTypeVar (UnresolvedType unresolved) (Params _loc vars) = unresolved `elem` vars
+isTypeVar (UnresolvedType _ unresolved) (Params _loc vars) = unresolved `elem` vars
 
 data Fn a = Fn !(XFn a) Ident TyParamList [Arg a] (Type a) (Block a)
 type family XFn a

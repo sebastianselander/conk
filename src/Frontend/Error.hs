@@ -10,7 +10,6 @@ import Control.Monad.Validate
 import Data.Text (intercalate, pack)
 import Data.Text qualified as Text
 import Frontend.Parser.Pretty ()
-import Frontend.Parser.Types (ImportPar)
 import Frontend.Parser.Utils (CustomParseError)
 import Frontend.Renamer.Pretty ()
 import Frontend.Renamer.Types (ExprRn, PatternRn)
@@ -27,6 +26,7 @@ import Utils (indent, quote)
 
 data RnError
     = UnboundVariable SourceInfo Ident
+    | UnboundType SourceInfo Ident
     | ConflictingDefinitionArgument SourceInfo Ident
     | ConflictingTypeParameter SourceInfo TyVar
     | DuplicateToplevels SourceInfo Ident
@@ -84,6 +84,7 @@ reportRnError err = case err of
         combineRn
             info
             (unwords ["Variable", quote $ pThing name, "not in scope"])
+    UnboundType loc name -> combineRn loc (unwords ["Type", quote $ pThing name, "not in scope"])
     ConflictingDefinitionArgument info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
     ConflictingTypeParameter info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
     DuplicateToplevels info name -> combineRn info (unwords ["Definition", quote $ pThing name, "already declared earlier"])

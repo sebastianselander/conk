@@ -12,7 +12,7 @@ import Frontend.Parser.Types
 import Frontend.Parser.Utils
 import Frontend.Types
 import Names (Ident (Ident), Namespace (Namespace), mkNamespace)
-import Relude hiding (TyVar, break, span)
+import Relude hiding (break, span)
 import System.FilePath (dropExtension)
 import Text.Megaparsec (ParseErrorBundle, (<?>))
 import Text.Megaparsec qualified as P
@@ -90,7 +90,7 @@ function = do
     name <- lexeme identifier
     tyParams <- tyParamList
     args <- parens (commaSep argument)
-    ty <- P.option (TyLit NoExtField Unit) (lexeme (keyword "->") *> type_)
+    ty <- P.option (TyLit emptyInfo Unit) (lexeme (keyword "->") *> type_)
     expressions <- block
     info <- spanEnd gs
     pure (Fn info name tyParams args ty expressions)
@@ -108,15 +108,19 @@ type_ = P.choice [typeAtom, pFunTy, pTyCon, parens type_] <?> "type"
   where
     pTyCon :: Parser TypePar
     pTyCon = do
+        gs <- spanStart
         name <- lexeme upperIdentifier
-        pure $ TyCon NoExtField name
+        loc <- spanEnd gs
+        pure $ Type (UnresolvedType loc (TyVar name))
 
     pFunTy :: Parser TypePar
     pFunTy = do
+        gs <- spanStart
         lexeme $ keyword "fn"
         argTys <- parens (commaSep type_)
         lexeme $ keyword "->"
-        TyFun NoExtField argTys <$> type_
+        loc <- spanEnd gs
+        TyFun loc argTys <$> type_
 
     typeAtom :: Parser TypePar
     typeAtom =
@@ -130,7 +134,11 @@ type_ = P.choice [typeAtom, pFunTy, pTyCon, parens type_] <?> "type"
             ]
 
 primtype :: TyLit -> Text -> Parser TypePar
-primtype lit text = TyLit NoExtField lit <$ lexeme (keyword text)
+primtype lit text = do
+    gs <- spanStart
+    lexeme (keyword text)
+    loc <- spanEnd gs
+    pure (TyLit loc lit)
 
 -- TODO: Remove needing semicolon after if, loop, while!
 pStmtColon :: Parser (Maybe StmtPar)

@@ -43,11 +43,12 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Frontend.Error
-import Frontend.Renamer.Types (AdtRn, Boundedness (..))
+import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Types (SourceInfo)
 import Names (Ident (..), Namespace)
 import Relude hiding (Map, head)
 import Frontend.Builtin (Builtins, isBuiltin)
+import Frontend.Typechecker.Types (Tc)
 
 data Env = Env
     { _newToOld :: Map Ident Ident
@@ -63,10 +64,10 @@ data Env = Env
 data Ctx = Ctx
     { _localDefinitions :: Set Ident
     , _namespace :: Namespace
-    , _builtins :: Builtins ()
+    , _builtins :: Builtins Tc
     , _allVars :: Map Namespace (Set Ident)
     , _namespaces :: Set Namespace
-    , _userDefinedTypes :: Set AdtRn
+    , _userDefinedTypes :: Set Ident
     }
     deriving (Show)
 
@@ -97,10 +98,10 @@ emptyEnv imported =
 
 createCtx ::
     Namespace ->
-    Builtins () ->
+    Builtins Tc ->
     Map Namespace (Set Ident) ->
     Set Namespace ->
-    Set AdtRn ->
+    Set Ident ->
     Ctx
 createCtx = Ctx mempty
 

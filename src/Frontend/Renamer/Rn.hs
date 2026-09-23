@@ -1,13 +1,17 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use lambda-case" #-}
 
 module Frontend.Renamer.Rn (rename) where
 
 import Control.Lens (locally, modifying, view)
-import Control.Monad.Validate (MonadValidate (dispute))
+import Control.Monad.Validate (MonadValidate (dispute, refute))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Frontend.Builtin (builtins)
+import Frontend.Builtin qualified as Builtins
 import Frontend.Error
 import Frontend.Parser.Types
 import Frontend.Renamer.Monad
@@ -17,13 +21,15 @@ import Frontend.Utils (isUnique)
 import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
-import qualified Frontend.Builtin as Builtins
 
 rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
-rename namespaces symbolMap prg@(Program namespace _) =
-    runGen (emptyEnv symbolMap) (createCtx namespace builtins allVars namespaces undefined)
+rename namespaces symbolMap prg@(Program namespace defs) =
+    runGen (emptyEnv symbolMap) (createCtx namespace builtins allVars namespaces types)
         $ rnProgram prg
   where
+    types =
+        Set.fromList
+            (mapMaybe (\case DefAdt (Adt _loc name _cons) -> Just name; _ -> Nothing) defs)
     allVars :: Map Namespace (Set Ident)
     allVars =
         foldr (\(k, v) acc -> Map.insertWith Set.union k (Set.singleton v) acc) mempty
@@ -146,12 +152,12 @@ rnConstructor = \case
     EnumCons loc name -> checkAndinsertConstrutor loc name >> pure (EnumCons loc name)
     FunCons loc name types ->
         checkAndinsertConstrutor loc name
-            >> FunCons loc name
-            <$> mapM (renameType emptyTyParamList) types
+            >> FunCons loc name <$> mapM (renameType emptyTyParamList) types
 
 rnBlock :: TyParamList -> BlockPar -> Gen BlockRn
 rnBlock tyParams (Block a stmts expr) =
-    uncurry (Block a) <$> newContext ((,) <$> mapM (rnStatement tyParams) stmts <*> mapM (rnExpr tyParams) expr)
+    uncurry (Block a)
+        <$> newContext ((,) <$> mapM (rnStatement tyParams) stmts <*> mapM (rnExpr tyParams) expr)
 
 rnStatement :: TyParamList -> StmtPar -> Gen StmtRn
 rnStatement tyParams = \case
@@ -162,7 +168,7 @@ rnStatement tyParams = \case
 rnExpr :: TyParamList -> ExprPar -> Gen ExprRn
 rnExpr tyParams = goRnExpr
   where
-    goRnExpr :: ExprPar -> Gen ExprRn 
+    goRnExpr :: ExprPar -> Gen ExprRn
     goRnExpr = \case
         Lit info lit -> Lit info <$> rnLit lit
         Var (info, ns) variable -> do
@@ -268,7 +274,8 @@ rnPattern = fmap snd . go mempty
                 pure (seen <> seen' <> seen'', pat : pats)
 
 rnLamArgs ::
-    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) => TyParamList -> [LamArgPar] -> m [LamArgRn]
+    (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
+    TyParamList -> [LamArgPar] -> m [LamArgRn]
 rnLamArgs tyParams = fmap (reverse . snd) . foldlM f mempty
   where
     f ::
@@ -323,12 +330,15 @@ rnArgs tyParams = fmap (reverse . snd) . foldlM f mempty
         ty <- renameType tyParams ty
         pure (seen', Arg (info, namespace) name ty : acc)
 
-renameType :: (Monad m) => TyParamList -> TypePar -> m TypeRn
-renameType typeParams ty = case ty of
-    TyCon NoExtField name -> pure (TyCon NoExtField name)
-    TypeVar NoExtField tyvar -> pure (TypeVar NoExtField tyvar)
-    TyLit NoExtField lit -> pure (TyLit NoExtField lit)
-    TyFun NoExtField args ret -> TyFun NoExtField <$> mapM (renameType typeParams) args <*> renameType typeParams ret
-    Type unresolved
-        | isTypeVar unresolved typeParams -> pure (TypeVar NoExtField (tyVarOf unresolved))
-        | otherwise -> pure (TyCon NoExtField (nameOf unresolved))
+renameType :: (MonadReader Ctx m, MonadValidate [RnError] m) => TyParamList -> TypePar -> m TypeRn
+renameType typeParams ty = do
+    userDefinedTypes <- view userDefinedTypes
+    case ty of
+        TyCon loc name -> pure (TyCon NoExtField name)
+        TypeVar loc tyvar -> pure (TypeVar NoExtField tyvar)
+        TyLit loc lit -> pure (TyLit NoExtField lit)
+        TyFun loc args ret -> TyFun NoExtField <$> mapM (renameType typeParams) args <*> renameType typeParams ret
+        Type unresolved@(UnresolvedType loc _)
+            | isTypeVar unresolved typeParams -> pure (TypeVar NoExtField (tyVarOf unresolved))
+            | Set.member (nameOf unresolved) userDefinedTypes -> pure (TyCon NoExtField (nameOf unresolved))
+            | otherwise -> refute [UnboundType loc (nameOf unresolved)]

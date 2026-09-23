@@ -96,11 +96,11 @@ type instance XCharLit Par = NoExtField
 type instance XBoolLit Par = NoExtField
 type instance XUnitLit Par = NoExtField
 
-type instance XTyLit Par = NoExtField
-type instance XTyFun Par = NoExtField
+type instance XTyLit Par = SourceInfo
+type instance XTyFun Par = SourceInfo
 type instance XType Par = UnresolvedType
-type instance XTyCon Par = NoExtField
-type instance XTypeVar Par = NoExtField
+type instance XTyCon Par = SourceInfo
+type instance XTypeVar Par = SourceInfo
 
 type instance XLoop Par = SourceInfo
 type instance XLam Par = SourceInfo

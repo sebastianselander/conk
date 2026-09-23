@@ -15,6 +15,7 @@ import Frontend.Types
     )
 import Names (Ident (..), Namespace (Namespace))
 import Relude hiding (Type)
+import Frontend.Typechecker.Types (Tc)
 
 newtype Builtins a = Builtins (Map Namespace (Map Ident (Type a, SourceInfo)))
 
@@ -29,7 +30,7 @@ isBuiltin namespace ident (Builtins m) = isJust $ Map.lookup ident =<< Map.looku
 lookup :: Namespace -> Ident -> Builtins a -> Maybe (Type a, SourceInfo)
 lookup namespace name (Builtins m) = Map.lookup name =<< Map.lookup namespace m
 
-builtins :: Builtins ()
+builtins :: Builtins Tc
 builtins =
     Builtins
         $ Map.singleton

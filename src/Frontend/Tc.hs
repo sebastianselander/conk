@@ -79,7 +79,7 @@ getTypesAndCons a = TypeCons {types = listify' h a, cons = concat (listify' f a)
                 (name, (TyFun NoExtField (fmap typeOf argTys) returnType, loc))
 
 tc ::
-    DefTable TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
+    DefTable Tc TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
 tc defTable names (Program _namespace defs) =
     case first partitionEithers $ unzip $ fmap (tcDefs names defTable) defs of
         (([], defs), warnings) -> (Right $ Program NoExtField defs, mconcat warnings)
@@ -87,7 +87,7 @@ tc defTable names (Program _namespace defs) =
 
 tcDefs ::
     Names ->
-    DefTable TypeTc SourceInfo ->
+    DefTable Tc TypeTc SourceInfo ->
     DefRn ->
     (Either [TcError] DefTc, [TcWarning])
 tcDefs names table (DefFn fn) =
@@ -95,7 +95,7 @@ tcDefs names table (DefFn fn) =
 tcDefs _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
 tcDefs _ table (DefImport imp) = (Right (DefImport (tcImport table imp)), [])
 
-tcImport :: DefTable TypeTc SourceInfo -> ImportRn -> ImportTc
+tcImport :: DefTable Tc TypeTc SourceInfo -> ImportRn -> ImportTc
 tcImport table (ImportExplicit _ namespace names) =
     let funs :: Map Ident (TypeTc, SourceInfo)
         funs =
@@ -143,7 +143,7 @@ inferConstructor ty = \case
 
 tcFunction ::
     Names ->
-    DefTable TypeTc SourceInfo ->
+    DefTable Tc TypeTc SourceInfo ->
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
 tcFunction names defTable fun@(Fn _ _ tyParams args rt _) =
