@@ -12,8 +12,11 @@ import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
 import Control.Monad.Writer (Writer, runWriter)
 import Data.Data (Data)
 import Data.Map.Strict qualified as Map
+import Frontend.Builtin qualified as Builtins
 import Frontend.Error
 import Frontend.Renamer.Types
+import Frontend.Substitution (Substitution)
+import Frontend.Substitution qualified as Sub
 import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Frontend.Typechecker.Types
@@ -24,8 +27,6 @@ import Relude.Unsafe (fromJust)
 import Table (DefTable, builtIns, functions)
 import Table qualified as DefTable
 import Utils (chain, listify')
-import Frontend.Builtin (isBuiltin)
-import qualified Frontend.Builtin as Builtins
 
 newtype Env = Env
     { _variables :: Map Ident (TypeTc, SourceInfo)
@@ -53,8 +54,8 @@ getFuns :: (Data a) => a -> [(Ident, (TypeTc, SourceInfo))]
 getFuns = listify' f
   where
     f :: FnRn -> Maybe (Ident, (TypeTc, SourceInfo))
-    f (Fn info name tyParams args returnType _) =
-        let funTy = TyFun NoExtField (fmap typeOf args) (typeOf returnType)
+    f (Fn info name tyParamList args returnType _) =
+        let funTy = TyFun tyParamList (fmap typeOf args) (typeOf returnType)
          in Just (name, (funTy, info))
 
 data TypeCons = TypeCons
@@ -76,7 +77,7 @@ getTypesAndCons a = TypeCons {types = listify' h a, cons = concat (listify' f a)
         g returnType = \case
             EnumCons loc name -> (name, (returnType, loc))
             FunCons loc name argTys ->
-                (name, (TyFun NoExtField (fmap typeOf argTys) returnType, loc))
+                (name, (TyFun emptyTyParamList (fmap typeOf argTys) returnType, loc))
 
 tc ::
     DefTable Tc TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
@@ -139,7 +140,7 @@ inferConstructor ty = \case
     EnumCons loc name -> EnumCons (loc, ty) name
     FunCons loc name types ->
         let types' = fmap typeOf types
-         in FunCons (loc, TyFun NoExtField types' ty) name types'
+         in FunCons (loc, TyFun emptyTyParamList types' ty) name types'
 
 tcFunction ::
     Names ->
@@ -147,7 +148,7 @@ tcFunction ::
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
 tcFunction names defTable fun@(Fn _ _ tyParams args rt _) =
-    let varTable =
+    let argTable =
             foldr
                 ( uncurry Map.insert
                     . ( \(Arg info name ty) ->
@@ -162,7 +163,7 @@ tcFunction names defTable fun@(Fn _ _ tyParams args rt _) =
                 mempty
                 args
         ctx = Ctx.Ctx defTable (typeOf rt) fun [] names
-        env = Env varTable
+        env = Env argTable
      in run ctx env $ go fun
   where
     go :: Fn Rn -> TcM (Fn Tc)
@@ -199,7 +200,7 @@ tcBlock expectedTy (Block info statements tailExpression) = do
         Just tail -> Just <$> tcExpr expectedTy tail
     pure $ Block (info, maybe (TyLit NoExtField Unit) typeOf expr) stmts expr
 
-infArg :: Monad m => ArgRn -> m ArgTc
+infArg :: (Monad m) => ArgRn -> m ArgTc
 infArg (Arg _ name ty) = pure $ Arg NoExtField name (typeOf ty)
 
 infStmt :: StmtRn -> TcM StmtTc
@@ -262,12 +263,12 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         r <- tcExpr typeOfOp r
         let retty = operatorReturnType (operatorType op) op
         pure $ BinOp (info, retty) l op r
-    App info l r -> do
-        l <- infExpr l
+    App info lExpr rExprs -> do
+        lExpr <- infExpr lExpr
         let tcApp ty = case ty of
-                TyFun NoExtField argTys retTy -> do
+                TyFun tyParamList argTys retTy -> do
                     let argTysLength = length argTys
-                    let rLength = length r
+                    let rLength = length rExprs
                     if
                         | argTysLength < rLength -> do
                             retTy <-
@@ -276,8 +277,8 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                                         info
                                         argTysLength
                                         rLength
-                            r <- mapM infExpr r
-                            pure $ App (info, retTy) l r
+                            r <- mapM infExpr rExprs
+                            pure $ App (info, retTy) lExpr r
                         | argTysLength > rLength -> do
                             retTy <-
                                 Any
@@ -285,17 +286,21 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                                         info
                                         argTysLength
                                         rLength
-                            r <- mapM infExpr r
-                            pure $ App (info, retTy) l r
+                            r <- mapM infExpr rExprs
+                            pure $ App (info, retTy) lExpr r
                         | otherwise -> do
                             -- invariant: argTys and r are of equal length
-                            r <- zipWithM tcExpr argTys r
-                            pure $ App (info, retTy) l r
+                            rExprs <- mapM infExpr rExprs
+                            let sub = unifiesSubst info tyParamList (zip argTys (fmap typeOf rExprs))
+                            case sub of
+                                Nothing -> error "Could not unify"
+                                Just sub -> do
+                                    pure $ App (info, Sub.substitute sub retTy) lExpr rExprs
                 ty -> do
                     retTy <- Any <$ applyNonFunction info ty
-                    r <- mapM infExpr r
-                    pure $ App (info, retTy) l r
-        tcApp (typeOf l)
+                    r <- mapM infExpr rExprs
+                    pure $ App (info, retTy) lExpr r
+        tcApp (typeOf lExpr)
     Let (info, mbty) name expr -> do
         expr <- maybe (infExpr expr) ((`tcExpr` expr) . typeOf) mbty
         let ty = typeOf expr
@@ -377,12 +382,12 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
     Lam info args body -> do
         let insertArg (LamArg (info, ty, _namespace) name) = do
                 let ty' = fmap typeOf ty
-                ty <- maybe (Any <$ typeMustBeKnown info name) pure ty'
+                ty <- maybe (Any <$ typeMustBeKnown' info name) pure ty'
                 insertVar name ty info
                 pure $ LamArg ty name
         args <- mapM insertArg args
         body <- infExpr body
-        let ty = TyFun NoExtField (fmap typeOf args) (typeOf body)
+        let ty = TyFun emptyTyParamList (fmap typeOf args) (typeOf body)
         pure $ Lam (info, ty) args body
     Match loc scrutinee matchArms -> do
         scrutinee <- infExpr scrutinee
@@ -394,6 +399,29 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                 let armType = typeOf arm1
                 arms <- mapM (tcMatchArm scrutType armType) arms
                 pure $ Match (loc, armType) scrutinee (arm1 : arms)
+
+unifyArgs ::
+    Map TyVar (Maybe TypeTc) -> [(TypeTc, ExprRn)] -> TcM ([ExprTc], Map TyVar (Maybe TypeTc))
+unifyArgs tyvarMap [] = pure ([], tyvarMap)
+unifyArgs tyvarMap ((ty, expr) : xs) = do
+    (m1, expr) <- unifyArg tyvarMap ty expr
+    (exprs, m2) <- unifyArgs m1 xs
+    pure (expr : exprs, Map.union m1 m2)
+
+unifyArg ::
+    Map TyVar (Maybe TypeTc) ->
+    TypeTc ->
+    ExprRn ->
+    TcM (Map TyVar (Maybe TypeTc), ExprTc)
+unifyArg tyvarMap argType expr = case argType of
+    TypeVar NoExtField tyvar -> do
+        case Map.lookup tyvar tyvarMap of
+            Just Nothing -> do
+                expr <- infExpr expr
+                pure (Map.insert tyvar (Just $ typeOf expr) tyvarMap, expr)
+            Just (Just ty) -> (tyvarMap,) <$> tcExpr ty expr
+            Nothing -> (tyvarMap,) <$> tcExpr argType expr
+    _ -> (tyvarMap,) <$> tcExpr argType expr
 
 infMatchArm :: TypeTc -> MatchArmRn -> TcM MatchArmTc
 infMatchArm pattype (MatchArm loc pat body) = do
@@ -419,7 +447,7 @@ tcPat pattype currentPattern = case currentPattern of
     PFunCon (loc, namespace) conName pats -> do
         (ty, _declLoc) <- lookupCon namespace conName
         case ty of
-            TyFun NoExtField argtys retty
+            TyFun tyParamList argtys retty
                 | length argtys == length pats -> do
                     unify' loc pattype retty
                     pats <- zipWithM tcPat argtys pats
@@ -467,6 +495,7 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         unify info expectedTy expr
         pure expr
     App info fun args -> do
+        -- TODO: Do actual typechecking otherwise lambdas always have to be annotated.
         expr <- infExpr (App info fun args)
         unify info expectedTy expr
         pure expr
@@ -510,7 +539,7 @@ tcExpr expectedTy currentExpr = Ctx.push currentExpr $ case currentExpr of
         pure $ Loop (info, expectedTy) block
     Lam info args body -> do
         case expectedTy of
-            TyFun NoExtField argtys retty
+            TyFun tyParamList argtys retty
                 | length argtys == length args -> do
                     lamArgs <- unifyLambdaArgs (zip argtys args)
                     body <- tcExpr retty body
@@ -663,10 +692,9 @@ instance TypeOf BlockTc where
 instance TypeOf TypeRn where
     typeOf = \case
         TyLit a b -> TyLit a b
-        TyFun a b c -> TyFun a (fmap typeOf b) (typeOf c)
+        TyFun a b c -> TyFun emptyTyParamList (fmap typeOf b) (typeOf c) -- NOTE: is `emptyTyParamList` correct?
         TyCon a b -> TyCon a b
         TypeVar a b -> TypeVar a b
-        
 
 instance TypeOf LamArgTc where
     typeOf (LamArg ty _) = ty
@@ -688,9 +716,9 @@ unify ::
     m ()
 unify info ty1 a = unify' info ty1 (typeOf a)
 
--- | Unify two types. The first argument type *must* the expected one!
+-- | Unify two types. The first argument type *must* be the expected one!
 unify' ::
-    (MonadState Env m, MonadValidate [TcError] m, MonadReader Ctx m) =>
+    (MonadValidate [TcError] m, MonadReader Ctx m) =>
     SourceInfo ->
     TypeTc ->
     TypeTc ->
@@ -699,7 +727,7 @@ unify' info ty1 ty2 = case (ty1, ty2) of
     (TyLit _ lit1, TyLit _ lit2)
         | lit1 == lit2 -> pure ()
         | otherwise -> void $ tyExpectedGot info [ty1] ty2
-    (TypeVar _ tvar1, TypeVar _ tvar2) 
+    (TypeVar _ tvar1, TypeVar _ tvar2)
         | tvar1 == tvar2 -> pure ()
         | otherwise -> void $ tyExpectedGot info [ty1] ty2
     (TyFun _ l1 r1, TyFun _ l2 r2) -> do
@@ -712,3 +740,38 @@ unify' info ty1 ty2 = case (ty1, ty2) of
         | name1 == name2 -> pure ()
         | otherwise -> tyExpectedGot info [ty1] ty2
     (ty1, ty2) -> void $ tyExpectedGot info [ty1] ty2
+
+unifiesSubst :: SourceInfo -> TyParamList -> [(TypeTc, TypeTc)] -> Maybe (Substitution Tc)
+unifiesSubst loc params = foldlM f Sub.empty
+  where
+    f :: Substitution Tc -> (TypeTc, TypeTc) -> Maybe (Substitution Tc)
+    f sub (ty1, ty2) = Sub.compose sub =<< unifySubst loc params ty1 ty2
+
+-- If ty1 is a type variable and it is a member of TyParamList then it will be unified with the second type
+unifySubst :: SourceInfo -> TyParamList -> TypeTc -> TypeTc -> Maybe (Substitution Tc)
+unifySubst loc params ty1 ty2 = case (ty1, ty2) of
+    (TyLit _ lit1, TyLit _ lit2)
+        | lit1 == lit2 -> pure Sub.empty
+        | otherwise -> Nothing
+    (TypeVar _ tvar1, TypeVar _ tvar2)
+        | tvar1 == tvar2 -> pure Sub.empty
+        | tvar1 `member` params -> pure (Sub.singleton tvar1 ty2)
+        | otherwise -> Nothing
+    (TypeVar _ tvar1, ty2)
+        | tvar1 `member` params -> pure (Sub.singleton tvar1 ty2)
+        | otherwise -> Nothing
+    (TyFun _ l1 r1, TyFun _ l2 r2) ->
+        case length l1 == length l2 of
+            False -> Nothing
+            True -> do
+                argsSub <-
+                    foldlM (\sub (lty, rty) -> Sub.compose <$> sub <*> unifySubst loc params lty rty) (Just Sub.empty)
+                        $ zip l1 l2
+                retSub <- unifySubst loc params r1 r2
+                argsSub <- argsSub
+                Sub.compose argsSub retSub
+    (TyCon NoExtField name1, TyCon NoExtField name2)
+        | name1 == name2 -> pure Sub.empty
+        | otherwise -> Nothing
+    (Type AnyX, _) -> pure Sub.empty
+    _ -> Nothing

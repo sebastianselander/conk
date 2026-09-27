@@ -54,6 +54,7 @@ library
     Frontend.Typechecker.Pretty
     Frontend.Typechecker.Types
     Frontend.Types
+    Frontend.Substitution
     Names
     Options
     Origin

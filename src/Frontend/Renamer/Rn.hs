@@ -165,6 +165,7 @@ rnStatement tyParams = \case
         b <- rnExpr tyParams b
         pure $ SExpr a b
 
+
 rnExpr :: TyParamList -> ExprPar -> Gen ExprRn
 rnExpr tyParams = goRnExpr
   where
@@ -173,6 +174,8 @@ rnExpr tyParams = goRnExpr
         Lit info lit -> Lit info <$> rnLit lit
         Var (info, ns) variable -> do
             namespace <- view namespace
+            let isOk Nothing = True
+                isOk (Just x) = x
             (bind, (namespace, name)) <-
                 maybe
                     ((Free, (Namespace ("$unbound$" :| []), Ident "$unbound$")) <$ unboundVariable info variable)
@@ -185,11 +188,11 @@ rnExpr tyParams = goRnExpr
                             Nothing -> pure Nothing
                         )
                         (pure . Just)
-                    =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> boundFun variable) (pure . Just)
+                    =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> (if isOk(fmap (namespace ==) ns) then boundFun variable else pure Nothing)) (pure . Just)
                     =<< ( maybe
                             (fmap (Free,) <$> boundArg variable)
                             ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
-                            =<< boundVar variable
+                            =<< if isOk (fmap (namespace  ==) ns) then boundVar variable else pure Nothing
                         )
             pure $ Var (info, namespace, bind) name
         Prefix info op expr -> Prefix info op <$> goRnExpr expr

@@ -11,7 +11,7 @@ import Frontend.Types
       SourceInfo (SourceInfo),
       TyLit (..),
       Type (..),
-      emptySpan,
+      emptySpan, emptyTyParamList,
     )
 import Names (Ident (..), Namespace (Namespace))
 import Relude hiding (Type)
@@ -39,21 +39,21 @@ builtins =
                 [
                     ( Ident "printInt"
                     ,
-                        ( TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit)
+                        ( TyFun emptyTyParamList [TyLit NoExtField Int] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )
                 ,
                     ( Ident "printString"
                     ,
-                        ( TyFun NoExtField [TyLit NoExtField String] (TyLit NoExtField Unit)
+                        ( TyFun emptyTyParamList [TyLit NoExtField String] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )
                 ,
                     ( Ident "printChar"
                     ,
-                        ( TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit)
+                        ( TyFun emptyTyParamList [TyLit NoExtField Char] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )

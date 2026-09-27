@@ -108,11 +108,11 @@ dsProgram (Tc.Program Tc.NoExtField defs) = do
     pure $ Program $ fmap (uncurry3 StaticString) strings <> toList lifteds <> defs
 
 isMain :: Tc.FnTc -> Bool
-isMain (Tc.Fn NoExtField (Ident "main") tyParams _ _ _) = True
+isMain (Tc.Fn NoExtField (Ident "main") _tyParams _ _ _) = True
 isMain _ = False
 
 dsFunction :: Tc.FnTc -> DsM Def
-dsFunction def@(Tc.Fn NoExtField name tyParams args returnType (Tc.Block (_info, _) stmts tail)) = do
+dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info, _) stmts tail)) = do
     assign nameCounter 0 -- Start the name counter from 0 for each local scope
     args <- (EnvArg (PointerType Void) :) <$> mapM dsArg args
     returnType <- mkClosureType returnType
@@ -272,7 +272,7 @@ dsExpr = \case
         freshName <- fresh "lambda"
         ty' <- dsType ty
         returnType <- case ty of
-            Tc.TyFun Tc.NoExtField _ retty -> mkClosureType retty
+            Tc.TyFun _ _ retty -> mkClosureType retty
             nonFunTy ->
                 error
                     $ "Internal compiler bug: non-function type '"
@@ -358,7 +358,7 @@ boundArgs (x : xs) = case x of
     _ -> boundArgs xs
 
 mkClosureType :: (Monad m) => Tc.TypeTc -> m Type
-mkClosureType (Tc.TyFun NoExtField ls r) = do
+mkClosureType (Tc.TyFun _ ls r) = do
     ls <- mapM mkClosureType ls
     r <- mkClosureType r
     pure $ StructType [TyFun ls r, PointerType Void]
@@ -366,6 +366,7 @@ mkClosureType ty = dsType ty
 
 dsType :: (Monad m) => Tc.TypeTc -> m Type
 dsType = \case
+    Tc.TypeVar NoExtField _ -> pure OpaquePointer
     Tc.TyCon NoExtField name -> pure (TyCon name)
     Tc.TyLit NoExtField Tc.Unit -> pure Unit
     Tc.TyLit NoExtField Tc.String -> pure (PointerType (I 8))
@@ -373,7 +374,7 @@ dsType = \case
     Tc.TyLit NoExtField Tc.Double -> pure Float
     Tc.TyLit NoExtField Tc.Int -> pure (I 64)
     Tc.TyLit NoExtField Tc.Bool -> pure (I 1)
-    Tc.TyFun NoExtField l r -> do
+    Tc.TyFun _ l r -> do
         ls <- mapM dsType l
         r <- dsType r
         pure $ TyFun (PointerType Void : ls) r

@@ -1,9 +1,7 @@
-def id<A>(x: A) -> A {
-    x
+def const<A>(x: A) -> fn(A) -> A {
+    return \_y -> x;
 }
 
 def main() {
-    std::printString(id("hej"));
-    std::printInt(id(69));
-    std::printChar(id('\n'));
+    std::printString(const("foo\n")("hej"));
 }

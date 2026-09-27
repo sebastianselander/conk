@@ -1,14 +1,15 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE DataKinds #-}
 
 module Frontend.Types where
 
 import Data.Data (Data)
 import Data.Kind qualified
 import Data.Tuple.Extra (both)
+import Frontend.Phase (Phase (..))
 import GHC.Show (show)
 import Names
 import Prettyprinter (Pretty (pretty))
@@ -16,7 +17,7 @@ import Relude hiding (Type, concat, intercalate, replicate)
 import Relude qualified
 import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
-import Frontend.Phase (Phase(..))
+import qualified Data.Map as Map
 
 type HaskellType = Data.Kind.Type
 
@@ -80,6 +81,17 @@ data TyParamList = Params SourceInfo [TyVar]
 emptyTyParamList :: TyParamList
 emptyTyParamList = Params emptyInfo []
 
+member :: TyVar -> TyParamList -> Bool
+member tyvar (Params _ xs) = tyvar `elem` xs
+
+toMap :: TyParamList -> Map TyVar (Maybe (Type a))
+toMap (Params _ xs) = Map.fromList (fmap (,Nothing) xs)
+
+pop :: TyVar -> TyParamList -> (TyParamList, Maybe TyVar)
+pop tyvar (Params loc xs) = case break (== tyvar) xs of
+    (fs, []) -> (Params loc fs, Nothing)
+    (fs, x : xs) -> (Params loc (fs <> xs), Just x)
+
 nameOf :: UnresolvedType -> Ident
 nameOf (UnresolvedType _ (TyVar name)) = name
 
@@ -136,6 +148,14 @@ data Type a
     | TypeVar !(XTypeVar a) TyVar
     | Type !(XType a)
 
+(~~) :: Type a -> Type a -> Bool
+l ~~ r = case (l,r) of
+    (TyLit _ left, TyLit _ right) -> left == right
+    (TyFun _ largs lret, TyFun _ rargs rret) -> and (zipWith (~~) largs rargs) && lret ~~ rret
+    (TyCon _ left, TyCon _ right) -> left == right
+    (TypeVar _ left, TypeVar _ right) -> left == right
+    _ -> False
+
 type family XTyLit a
 type family XTyFun a
 type family XType a
@@ -162,7 +182,6 @@ coerceType ty = case ty of
 
 data TyLit = Unit | String | Int | Double | Char | Bool
     deriving (Show, Eq, Ord, Enum, Data)
-
 
 data Block a = Block !(XBlock a) [Stmt a] (Maybe (Expr a))
 type family XBlock a
