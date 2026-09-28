@@ -71,9 +71,16 @@ pPrefixOp = \case
     Neg -> "-"
 
 pProgram :: Program -> Doc ann
-pProgram (Program defs) = hcat (punctuate hardline (fmap pDef defs))
+pProgram (Program defs) = hcat (punctuate (hardline <> hardline) (fmap pDef defs))
 
 pDef :: Def -> Doc ann
+pDef (Decl namespace ty name tys) =
+    "declare"
+        <+> pType ty
+        <+> pretty namespace
+        <> "::"
+        <> pretty name
+        <> parens (concatWith (surround (comma <> space)) (fmap pType tys))
 pDef (TypeSyn name ty) = "type" <+> pretty name <+> "=" <+> pType ty
 pDef (Con index name ty arguments) =
     show index
@@ -96,8 +103,7 @@ pDef (Fn _ name args typ exprs) =
         , hardline
         , indent 4 $ hcat $ punctuate hardline (fmap pExpr exprs)
         , hardline
-        , "}"
-        ]
+        ] <> "}"
 
 pIdent :: Ident -> Doc ann
 pIdent (Ident name) = pretty name
