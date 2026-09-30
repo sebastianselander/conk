@@ -1,8 +1,17 @@
-def apply<A,B>(f: fn(A) -> B, x: A) -> B {
-    f(x)
+type Option<A> {
+    Ok(int),
+    None,
 }
+
 def main() {
-    let x = apply(\(x: int) -> x, 123);
-    std::printInt(x);
-    std::printChar('\n')
+    let some_str = Ok("hej");
+    let some_int = Ok(123);
+    match some_str {
+        Ok(x) => printString(x),
+        None => printString("<missing string>")
+    }
+    match some_int {
+        Ok(x) => printInt(x),
+        None => printString("<missing int>")
+    }
 }

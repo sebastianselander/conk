@@ -1,7 +1,8 @@
-def const<A>(x: A) -> fn(A) -> A {
-    return \_y -> x;
+def id<A>(x: A) -> A {
+    x
 }
 
 def main() {
-    std::printString(const("foo\n")("hej"));
+    let b = id("hej\n");
+    std::printString(b);
 }

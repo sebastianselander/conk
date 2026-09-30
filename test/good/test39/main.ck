@@ -1,10 +1,7 @@
-def id<A>(x: A) -> A {
+def const<A,B>(x: A, y: B) -> A {
     x
 }
 
 def main() {
-    let a = id(123);
-    let b = id("hej\n");
-    std::printInt(a);
-    std::printString(b);
+    std::printString(const(const("bar\n", 123), "foo"))
 }
