@@ -5,6 +5,7 @@ import Data.Data (Data)
 import Names (Ident, Namespace)
 import Origin (Origin (..))
 import Relude hiding (Type)
+import Backend.Llvm.Types (Operand(LocalReference))
 
 newtype Program = Program [Def]
     deriving (Show, Eq, Ord, Data)
@@ -21,11 +22,14 @@ data Def
 data Arg = Arg Ident Type | EnvArg Type
     deriving (Show, Eq, Ord, Data)
 
+data Operand = ConstantOperand !Constant | LocalReference !Type !Ident
+
+
 data TyExpr = Typed Type Expr
     deriving (Show, Eq, Ord, Data)
 
 data Expr
-    = Lit Lit
+    = Constant Constant
     | Var Binding Ident
     | BinOp TyExpr BinOp TyExpr
     | PrefixOp PrefixOp TyExpr
@@ -82,7 +86,7 @@ data BinOp
 data PrefixOp = Not | Neg
     deriving (Show, Eq, Ord, Data)
 
-data Lit
+data Constant
     = IntLit !Integer
     | DoubleLit !Double
     | CharLit !Char

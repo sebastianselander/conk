@@ -198,7 +198,7 @@ dsExpr = \case
         rs <- mapM dsExpr rs
         ty <- mkClosureType ty
         case l of
-            Typed _ (Var Toplevel _) -> named $ pure $ Typed ty (App l (Typed (PointerType Void) (Lit NullLit) : rs))
+            Typed _ (Var Toplevel _) -> named $ pure $ Typed ty (App l (Typed (PointerType Void) (Constant NullLit) : rs))
             Typed lty l -> do
                 let function = StructIndexing (Typed lty l) 0
                 let env = StructIndexing (Typed lty l) 1
@@ -447,15 +447,15 @@ dsBlock f variable (Tc.Block (_, ty) stmts (Just tail)) = do
 
 dsLit :: Tc.LitTc -> DsM Expr
 dsLit = \case
-    Tc.IntLit NoExtField int -> pure $ Lit $ IntLit int
-    Tc.DoubleLit NoExtField double -> pure $ Lit $ DoubleLit double
+    Tc.IntLit NoExtField int -> pure $ Constant $ IntLit int
+    Tc.DoubleLit NoExtField double -> pure $ Constant $ DoubleLit double
     Tc.StringLit NoExtField string -> do
         name <- fresh "static_string"
         modifying staticStrings ((name, ArrayType (Text.length string + 1) (I 8), string <> "\\00") :)
         pure (Var Toplevel name)
-    Tc.CharLit NoExtField char -> pure $ Lit $ CharLit char
-    Tc.BoolLit NoExtField bool -> pure $ Lit $ BoolLit bool
-    Tc.UnitLit NoExtField -> pure $ Lit UnitLit
+    Tc.CharLit NoExtField char -> pure $ Constant $ CharLit char
+    Tc.BoolLit NoExtField bool -> pure $ Constant $ BoolLit bool
+    Tc.UnitLit NoExtField -> pure $ Constant UnitLit
 
 ass :: Ident -> Tc.TypeTc -> Rn.Boundedness -> Tc.AssignOp -> Tc.Expr Tc.Tc -> DsM Expr
 ass name typ binding op xpr = do
@@ -476,10 +476,10 @@ ass name typ binding op xpr = do
             Tc.ModAssign -> assignment Mod
 
 true :: TyExpr
-true = Typed (I 8) $ Lit $ BoolLit True
+true = Typed (I 8) $ Constant $ BoolLit True
 
 unit :: TyExpr
-unit = Typed (I 1) $ Lit UnitLit
+unit = Typed (I 1) $ Constant UnitLit
 
 typed :: Tc.TypeTc -> Expr -> DsM TyExpr
 typed ty expr = Typed <$> dsType ty <*> pure expr

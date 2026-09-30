@@ -39,7 +39,7 @@ pType = \case
             , pType ret
             ]
 
-pLit :: Lit -> Doc ann
+pLit :: Constant -> Doc ann
 pLit = \case
     IntLit lit -> show lit
     DoubleLit lit -> show lit
@@ -116,7 +116,7 @@ pExpr :: TyExpr -> Doc ann
 pExpr (Typed _ expr) = go expr
   where
     go = \case
-        Lit lit -> pLit lit
+        Constant lit -> pLit lit
         Var _ ident -> pIdent ident
         BinOp l op r -> pExpr l <+> pBinOp op <+> pExpr r
         PrefixOp op expr -> pPrefixOp op <+> pExpr expr
