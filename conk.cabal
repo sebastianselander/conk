@@ -18,7 +18,16 @@ common warnings
   ghc-options: -Wall -Wno-name-shadowing
 
 common extensions
-  default-extensions: NoImplicitPrelude
+  default-extensions: 
+    LexicalNegation
+    NoImplicitPrelude
+    MultilineStrings
+    BlockArguments
+    OrPatterns
+    StrictData
+    OverloadedStrings
+    OverloadedRecordDot
+    PartialTypeSignatures
 
 library
   import:           warnings, extensions
@@ -100,7 +109,7 @@ executable conk
 
 test-suite conk-test
   import:           warnings, extensions
-  default-language: GHC2021
+  default-language: GHC2024
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
