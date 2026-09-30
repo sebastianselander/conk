@@ -3,7 +3,7 @@
 
 module Backend.Llvm.Llvm where
 
-import Backend.Desugar.Types qualified as Desugar
+import Backend.Core.Types qualified as Core
 import Backend.Llvm.Monad
 import Backend.Llvm.Prelude (exitFailure, printString)
 import Backend.Llvm.Types
@@ -18,27 +18,27 @@ import Origin (Origin (..))
 import Relude hiding (Type, and, div, exitFailure, null, or, rem)
 import Utils (catMaybesSnd, mapWithIndexM)
 
-assemble :: Desugar.Program -> Ir
-assemble (Desugar.Program defs) =
+assemble :: Core.Program -> Ir
+assemble (Core.Program defs) =
     IrMain
         . sortBy (comparing Down)
         <$> runAssembler
         $ concatMapM assembleDecl defs
 
-assembleDecl :: Desugar.Def -> IRBuilder [Decl]
-assembleDecl (Desugar.Decl _namespace ty name args) = pure [Declare ty name args NoEllipsis]
-assembleDecl (Desugar.StaticString name ty text) = pure [GlobalString name ty text]
-assembleDecl (Desugar.Main block) = do
+assembleDecl :: Core.Def -> IRBuilder [Decl]
+assembleDecl (Core.Decl _namespace ty name args) = pure [Declare ty name args NoEllipsis]
+assembleDecl (Core.StaticString name ty text) = pure [GlobalString name ty text]
+assembleDecl (Core.Main block) = do
     clearInstructions
     mapM_ assembleExpr block
     pure . LlvmMain <$> extractInstructions
-assembleDecl (Desugar.Fn origin name arguments returnType block) = do
+assembleDecl (Core.Fn origin name arguments returnType block) = do
     clearInstructions
     args <- mapM assembleArg arguments
     mapM_ assembleExpr block
     pure . Define origin name args returnType <$> extractInstructions
-assembleDecl (Desugar.TypeSyn name ty) = pure [TypeDefinition name ty]
-assembleDecl (Desugar.Con index name ty tyArgs) = do
+assembleDecl (Core.TypeSyn name ty) = pure [TypeDefinition name ty]
+assembleDecl (Core.Con index name ty tyArgs) = do
     clearInstructions
     assembleCon index name ty tyArgs
 
@@ -79,9 +79,9 @@ assembleCon index name ty = \case
             , Define Top name [] ty [Nameless $ Ret $ global ty constructorFun]
             ]
 
-assembleArg :: Desugar.Arg -> IRBuilder Operand
-assembleArg (Desugar.EnvArg ty) = pure $ LocalReference ty (Ident "env")
-assembleArg (Desugar.Arg name ty) = do
+assembleArg :: Core.Arg -> IRBuilder Operand
+assembleArg (Core.EnvArg ty) = pure $ LocalReference ty (Ident "env")
+assembleArg (Core.Arg name ty) = do
     let arg = LocalReference ty (mkArgName name)
     fakeArg <- alloca name ty
     store arg fakeArg
@@ -90,14 +90,14 @@ assembleArg (Desugar.Arg name ty) = do
 mkArgName :: Ident -> Ident
 mkArgName (Ident name) = Ident $ name <> ".arg"
 
-assembleExpr :: Desugar.TyExpr -> IRBuilder Operand
-assembleExpr (Desugar.Typed taggedType expr) =
+assembleExpr :: Core.TyExpr -> IRBuilder Operand
+assembleExpr (Core.Typed taggedType expr) =
     case expr of
-        Desugar.Constant lit -> comment "Lit expression" >> assembleLit lit
-        Desugar.Var binding name -> do
+        Core.Constant lit -> comment "Lit expression" >> assembleLit lit
+        Core.Var binding name -> do
             comment "Var expression"
             case binding of
-                Desugar.Constructor ->
+                Core.Constructor ->
                     case taggedType of
                         TyFun _ _ -> do
                             fun <- call taggedType (global taggedType name) []
@@ -110,57 +110,57 @@ assembleExpr (Desugar.Typed taggedType expr) =
                             store (null opaquePtr) envPtr
                             load structType alloced
                         _ -> call taggedType (global taggedType name) []
-                Desugar.Free -> load taggedType $ LocalReference (ptr taggedType) name
-                Desugar.Bound -> load taggedType $ LocalReference (ptr taggedType) name
-                Desugar.Toplevel -> pure $ global taggedType name
-                Desugar.GlblConst -> do
+                Core.Free -> load taggedType $ LocalReference (ptr taggedType) name
+                Core.Bound -> load taggedType $ LocalReference (ptr taggedType) name
+                Core.Toplevel -> pure $ global taggedType name
+                Core.GlblConst -> do
                     -- NOTE: This will not work with global strings
                     op <- gep (global (ptr taggedType) name) [i32 @Integer 0]
                     load taggedType op
-                Desugar.Argument -> pure $ LocalReference taggedType name
-                Desugar.Lambda -> load taggedType $ LocalReference (ptr taggedType) name
-        Desugar.BinOp leftExpr operator rightExpr -> do
+                Core.Argument -> pure $ LocalReference taggedType name
+                Core.Lambda -> load taggedType $ LocalReference (ptr taggedType) name
+        Core.BinOp leftExpr operator rightExpr -> do
             comment "BinOp expression"
             left <- assembleExpr leftExpr
             right <- assembleExpr rightExpr
             llvmBinOp operator taggedType left right
-        Desugar.PrefixOp Desugar.Not expr -> do
+        Core.PrefixOp Core.Not expr -> do
             comment "PrefixOp expression"
             expr <- assembleExpr expr
             eq Bool (ConstantOperand (LBool taggedType False)) expr
-        Desugar.PrefixOp Desugar.Neg expr -> do
+        Core.PrefixOp Core.Neg expr -> do
             comment "PrefixOp expression"
             expr <- assembleExpr expr
             sub taggedType (ConstantOperand (LInt taggedType 0)) expr
-        Desugar.App appExpr argExprs -> do
+        Core.App appExpr argExprs -> do
             comment "App expression"
             app <- assembleExpr appExpr
             args <- mapM assembleExpr argExprs
             call taggedType app args
-        Desugar.Let name varType Nothing -> comment "Let expression" >> alloca name varType
-        Desugar.Let name varType (Just expr) -> do
+        Core.Let name varType Nothing -> comment "Let expression" >> alloca name varType
+        Core.Let name varType (Just expr) -> do
             comment "Let expression"
             decl <- alloca name varType
             expr <- assembleExpr expr
             store expr decl
             pure decl
-        Desugar.Ass name varType expr -> do
+        Core.Ass name varType expr -> do
             comment "Ass expression"
             expr <- assembleExpr expr
             let operand = LocalReference (ptr varType) name
             store expr operand
             pure operand
-        Desugar.Return expr -> do
+        Core.Return expr -> do
             comment "Return expression"
             expr <- assembleExpr expr
             ret expr
             unit
-        Desugar.Break -> do
+        Core.Break -> do
             comment "Break expression"
             lbl <- view breakLabel
             jump lbl
             unit
-        Desugar.If condition trueBlk falseBlk -> do
+        Core.If condition trueBlk falseBlk -> do
             comment "If expression"
             true <- mkLabel "if_true"
             false <- mkLabel "if_false"
@@ -186,7 +186,7 @@ assembleExpr (Desugar.Typed taggedType expr) =
             label end
 
             unit
-        Desugar.While condition blk -> do
+        Core.While condition blk -> do
             comment "While expression"
             start <- mkLabel "while_start"
             continue <- mkLabel "while_continue"
@@ -200,17 +200,17 @@ assembleExpr (Desugar.Typed taggedType expr) =
             jump continue
             label exit
             unit
-        Desugar.Closure fun env -> do
+        Core.Closure fun env -> do
             comment "Closure expression"
             name <- fresh
             mem <- case env of
                 [] -> pure $ null (ptr opaquePtr)
                 _ -> do
                     mem <- malloc (ptr opaquePtr) (i64 (length env * 8))
-                    forM_ (zip [0 ..] env) $ \(index, Desugar.Typed ty expr) -> do
+                    forM_ (zip [0 ..] env) $ \(index, Core.Typed ty expr) -> do
                         gepOperand <- gep mem [i32 @Integer index]
                         alloced <- malloc (ptr ty) (i32 $ sizeOf ty)
-                        operand <- assembleExpr (Desugar.Typed ty expr)
+                        operand <- assembleExpr (Core.Typed ty expr)
                         store operand alloced
                         store alloced gepOperand
                     pure mem
@@ -221,11 +221,11 @@ assembleExpr (Desugar.Typed taggedType expr) =
             store functionOperand functionPointer
             store mem environmentPointer
             load taggedType declaration
-        Desugar.StructIndexing expr n -> do
+        Core.StructIndexing expr n -> do
             comment "StructIndexing expression"
             operand <- assembleExpr expr
             extractValue Nothing operand [fromInteger n]
-        Desugar.ExtractFree bindName envName index -> do
+        Core.ExtractFree bindName envName index -> do
             comment "ExtractFree expression"
             operand <- gep (localRef (ptr opaquePtr) envName) [i32 index]
             operand <- gep operand [i32 @Integer 0]
@@ -235,18 +235,18 @@ assembleExpr (Desugar.Typed taggedType expr) =
             store operand variable
             pure variable
         -- TODO: Rewrite without phi-node, break-expressions cause some pain atm
-        Desugar.Match scrutinee@(Desugar.Typed _ _) matchArms (Desugar.Catch name catchExpr) -> do
+        Core.Match scrutinee@(Core.Typed _ _) matchArms (Core.Catch name catchExpr) -> do
             comment "Match expression"
             scrutOperand <- assembleExpr scrutinee
             tag <- extractValue (Just Int64) scrutOperand [0]
             doneLbl <- mkLabel "Done"
             catchLbl <- mkLabel "Catch"
             switchCases <- forM matchArms
-                $ \(Desugar.MatchArm pat _) ->
+                $ \(Core.MatchArm pat _) ->
                     (LInt Int64 (indexOf pat),)
                         <$> mkLabel ("Case_" <> show (indexOf pat))
             switch tag catchLbl switchCases
-            phiArgs <- forM (zip (fmap snd switchCases) matchArms) $ \(lbl, Desugar.MatchArm (Desugar.PCon _ vars) body) -> do
+            phiArgs <- forM (zip (fmap snd switchCases) matchArms) $ \(lbl, Core.MatchArm (Core.PCon _ vars) body) -> do
                 label lbl
 
                 forM_ (zip [0 ..] vars) $ \(index, (name, ty)) -> do
@@ -256,7 +256,7 @@ assembleExpr (Desugar.Typed taggedType expr) =
                     val <- load ty ptr
                     store val var
                 let isBreak = case NonEmpty.last body of
-                        Desugar.Typed _ Desugar.Break -> True
+                        Core.Typed _ Core.Break -> True
                         _ -> False
                 operand <- NonEmpty.last <$> mapM assembleExpr body
                 comeFrom <-
@@ -277,7 +277,7 @@ assembleExpr (Desugar.Typed taggedType expr) =
             phiArgs <- pure $ catMaybesSnd phiArgs
 
             phi (phiArgs <> [(operand, catchLbl)])
-        Desugar.ToStderrExit var -> do
+        Core.ToStderrExit var -> do
             void
                 $ call
                     (I 1)
@@ -290,46 +290,46 @@ assembleExpr (Desugar.Typed taggedType expr) =
                     []
             pure (undef taggedType)
 
-indexOf :: Desugar.Pattern -> Integer
+indexOf :: Core.Pattern -> Integer
 indexOf = \case
-    Desugar.PCon n _ -> fromIntegral n
+    Core.PCon n _ -> fromIntegral n
 
-assembleLit :: (Monad m) => Desugar.Constant -> m Operand
+assembleLit :: (Monad m) => Core.Constant -> m Operand
 assembleLit = \case
-    Desugar.IntLit int -> pure $ ConstantOperand (LInt Int64 int)
-    Desugar.DoubleLit double -> pure $ ConstantOperand (LDouble Float double)
-    Desugar.CharLit char -> pure $ ConstantOperand (LChar Char char)
-    Desugar.BoolLit bool -> pure $ ConstantOperand (LBool Bool bool)
-    Desugar.UnitLit -> pure $ ConstantOperand LUnit
-    Desugar.NullLit -> pure $ ConstantOperand (LNull (PointerType Void))
+    Core.IntLit int -> pure $ ConstantOperand (LInt Int64 int)
+    Core.DoubleLit double -> pure $ ConstantOperand (LDouble Float double)
+    Core.CharLit char -> pure $ ConstantOperand (LChar Char char)
+    Core.BoolLit bool -> pure $ ConstantOperand (LBool Bool bool)
+    Core.UnitLit -> pure $ ConstantOperand LUnit
+    Core.NullLit -> pure $ ConstantOperand (LNull (PointerType Void))
 
 unit :: (Monad m) => m Operand
 unit = pure $ ConstantOperand LUnit
 
-llvmBinOp :: Desugar.BinOp -> (Type -> Operand -> Operand -> IRBuilder Operand)
+llvmBinOp :: Core.BinOp -> (Type -> Operand -> Operand -> IRBuilder Operand)
 llvmBinOp op = case op of
-    Desugar.Mul -> mul
-    Desugar.Div -> div
-    Desugar.Add -> add
-    Desugar.Sub -> sub
-    Desugar.Mod -> rem
-    Desugar.Lt -> lt
-    Desugar.Or -> or
-    Desugar.And -> and
-    Desugar.Gt -> gt
-    Desugar.Lte -> le
-    Desugar.Gte -> ge
-    Desugar.Eq -> eq
-    Desugar.Neq -> neq
+    Core.Mul -> mul
+    Core.Div -> div
+    Core.Add -> add
+    Core.Sub -> sub
+    Core.Mod -> rem
+    Core.Lt -> lt
+    Core.Or -> or
+    Core.And -> and
+    Core.Gt -> gt
+    Core.Lte -> le
+    Core.Gte -> ge
+    Core.Eq -> eq
+    Core.Neq -> neq
 
-llvmLit :: Type -> Desugar.Constant -> Constant
+llvmLit :: Type -> Core.Constant -> Constant
 llvmLit ty = \case
-    Desugar.IntLit int -> LInt ty int
-    Desugar.DoubleLit double -> LDouble ty double
-    Desugar.CharLit char -> LChar ty char
-    Desugar.BoolLit bool -> LBool ty bool
-    Desugar.UnitLit -> LUnit
-    Desugar.NullLit -> LNull ty
+    Core.IntLit int -> LInt ty int
+    Core.DoubleLit double -> LDouble ty double
+    Core.CharLit char -> LChar ty char
+    Core.BoolLit bool -> LBool ty bool
+    Core.UnitLit -> LUnit
+    Core.NullLit -> LNull ty
 
 i32 :: (Integral a) => a -> Operand
 i32 = ConstantOperand . LInt Int32 . fromIntegral

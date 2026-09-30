@@ -1,6 +1,6 @@
-module Backend.Desugar.Breaks where
+module Backend.Core.Breaks where
 
-import Backend.Desugar.Types
+import Backend.Core.Types
 import Data.Generics (everywhere, mkT)
 import Relude
 

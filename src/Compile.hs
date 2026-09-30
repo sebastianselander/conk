@@ -6,8 +6,8 @@
 
 module Compile where
 
-import Backend.Desugar.Desugar (desugar)
-import Backend.Desugar.Pretty (prettyDesugar)
+import Backend.Core.Core (lowerToCore)
+import Backend.Core.Pretty (prettyCore)
 import Backend.Llvm.Llvm (assemble)
 import Backend.Llvm.Lower (llvmOut)
 import Backend.Llvm.Prelude (prelude)
@@ -120,9 +120,9 @@ compile files = do
                             pure res
              in mapM single xs
 
-    res <- case fmap (desugar names) programs of
+    res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do
-            log (Debug Desugar (Just $ prettyDesugar res) (toStrict $ pShow res)) []
+            log (Debug Core (Just $ prettyCore res) (toStrict $ pShow res)) []
             pure res
 
     case fmap assemble res of

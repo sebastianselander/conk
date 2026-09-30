@@ -3,9 +3,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Backend.Desugar.Basic (basicDesugar) where
+module Backend.Core.Basic (basicCore) where
 
-import Backend.Desugar.Types
+import Backend.Core.Types
 import Backend.Llvm.Prelude (globalUnit)
 import Backend.Types
 import Control.Lens (makeLenses)
@@ -97,8 +97,8 @@ fresh prefix = go 0
                 modifying names (insertName freshName)
                 pure freshName
 
-basicDesugar :: Names -> Tc.ProgramTc -> Program
-basicDesugar names = fst . run mempty (const $ pure ()) names 0 . dsProgram
+basicCore :: Names -> Tc.ProgramTc -> Program
+basicCore names = fst . run mempty (const $ pure ()) names 0 . dsProgram
 
 dsProgram :: Tc.ProgramTc -> DsM Program
 dsProgram (Tc.Program Tc.NoExtField defs) = do

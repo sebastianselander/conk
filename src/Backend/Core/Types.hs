@@ -1,4 +1,4 @@
-module Backend.Desugar.Types where
+module Backend.Core.Types where
 
 import Backend.Types (Type (..))
 import Data.Data (Data)

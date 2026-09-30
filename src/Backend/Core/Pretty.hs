@@ -1,9 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Backend.Desugar.Pretty where
+module Backend.Core.Pretty where
 
-import Backend.Desugar.Types
+import Backend.Core.Types
 import Backend.Types
 import Data.Text (Text)
 import Names
@@ -12,8 +12,8 @@ import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 import Relude hiding (Text, Type)
 
-prettyDesugar :: Program -> Text
-prettyDesugar = renderStrict . layoutPretty defaultLayoutOptions . pProgram
+prettyCore :: Program -> Text
+prettyCore = renderStrict . layoutPretty defaultLayoutOptions . pProgram
 
 pType :: Type -> Doc ann
 pType = \case

@@ -32,11 +32,11 @@ common extensions
 library
   import:           warnings, extensions
   exposed-modules:
-    Backend.Desugar.Basic
-    Backend.Desugar.Breaks
-    Backend.Desugar.Desugar
-    Backend.Desugar.Pretty
-    Backend.Desugar.Types
+    Backend.Core.Basic
+    Backend.Core.Breaks
+    Backend.Core.Core
+    Backend.Core.Pretty
+    Backend.Core.Types
     Backend.Llvm.Llvm
     Backend.Llvm.Monad
     Backend.Llvm.Prelude

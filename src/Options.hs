@@ -7,7 +7,7 @@ import Options.Applicative
 import Options.Applicative.NonEmpty (some1)
 import Relude
 
-data Pass = Parse | Rename | StCheck | TypeCheck | Desugar | Llvm
+data Pass = Parse | Rename | StCheck | TypeCheck | Core | Llvm
     deriving (Show, Ord, Eq)
 
 data Options = Options
@@ -36,7 +36,7 @@ pDumps =
                 (Just StCheck)
                 (long "dump-st" <> help "Show the output of the statement checking phase")
             , flag Nothing (Just TypeCheck) (long "dump-tc" <> help "Show the output of the typechecker")
-            , flag Nothing (Just Desugar) (long "dump-ds" <> help "Show the output of the desugaring phase")
+            , flag Nothing (Just Core) (long "dump-ds" <> help "Show the output of the desugaring phase")
             , flag Nothing (Just Llvm) (long "dump-llvm" <> help "Dump the generated llvm-ir code")
             ]
 
