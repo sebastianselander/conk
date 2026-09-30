@@ -1,7 +1,8 @@
-def const<A,B>(x: A, y: B) -> A {
+def id<A>(x: A) -> A {
     x
 }
 
 def main() {
-    std::printString(const(const("bar\n", 123), "foo"))
+    let b = id("hej\n");
+    std::printString(b);
 }

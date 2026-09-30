@@ -1,6 +1,6 @@
 module Frontend.Utils where
 
-import Frontend.Types (TyParamList (..), TyVar, SourceInfo)
+import Frontend.Types (SourceInfo, TyParamList (..), TyVar)
 import Relude
 
 isUnique :: TyParamList -> Maybe (SourceInfo, TyVar)
@@ -9,6 +9,6 @@ isUnique (Params loc xs) = go (reverse (toList xs))
   where
     go :: [TyVar] -> Maybe (SourceInfo, TyVar)
     go [] = Nothing
-    go (x:xs) 
+    go (x : xs)
         | x `elem` xs = Just (loc, x)
         | otherwise = go xs

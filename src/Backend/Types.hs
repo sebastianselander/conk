@@ -12,7 +12,7 @@ data Type
     | Mut Type
     | Float
     | PointerType Type
-    | OpaquePointer
+    | OpaquePointer -- Known types should prefer PointerType over OpaquePointer
     | Void
     | StructType [Type]
     | ArrayType Int Type

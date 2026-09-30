@@ -8,6 +8,7 @@ module Frontend.Types where
 
 import Data.Data (Data)
 import Data.Kind qualified
+import Data.Map qualified as Map
 import Data.Tuple.Extra (both)
 import Frontend.Phase (Phase (..))
 import GHC.Show (show)
@@ -17,7 +18,6 @@ import Relude hiding (Type, concat, intercalate, replicate)
 import Relude qualified
 import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
-import qualified Data.Map as Map
 
 type HaskellType = Data.Kind.Type
 
@@ -149,7 +149,7 @@ data Type a
     | Type !(XType a)
 
 (~~) :: Type a -> Type a -> Bool
-l ~~ r = case (l,r) of
+l ~~ r = case (l, r) of
     (TyLit _ left, TyLit _ right) -> left == right
     (TyFun _ largs lret, TyFun _ rargs rret) -> and (zipWith (~~) largs rargs) && lret ~~ rret
     (TyCon _ left, TyCon _ right) -> left == right

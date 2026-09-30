@@ -42,13 +42,13 @@ import Data.List.NonEmpty
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Frontend.Builtin (Builtins, isBuiltin)
 import Frontend.Error
 import Frontend.Renamer.Types (Boundedness (..))
+import Frontend.Typechecker.Types (Tc)
 import Frontend.Types (SourceInfo)
 import Names (Ident (..), Namespace)
 import Relude hiding (Map, head)
-import Frontend.Builtin (Builtins, isBuiltin)
-import Frontend.Typechecker.Types (Tc)
 
 data Env = Env
     { _newToOld :: Map Ident Ident
@@ -138,8 +138,8 @@ lookupBuiltin :: (MonadReader Ctx m) => Namespace -> Ident -> m (Maybe (Namespac
 lookupBuiltin namespace name = do
     map <- view builtins
     if isBuiltin namespace name map
-      then pure (Just (namespace, name))
-      else pure Nothing
+        then pure (Just (namespace, name))
+        else pure Nothing
 
 doesNamespaceExist :: (MonadReader Ctx m) => Namespace -> m Bool
 doesNamespaceExist namespace = views namespaces (Set.member namespace)

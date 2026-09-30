@@ -64,6 +64,7 @@ assembleCon index name ty = \case
             void $ flip mapWithIndexM operands $ \index argument -> do
                 value <- gep alloced [i32 @Integer 0, i32 @Integer 1, i32 @Integer index]
                 malloced <- malloc (ptr (typeOf argument)) (i64 @Int 10)
+                -- TODO(sebsel): Is this GEP needed?
                 mallocedPtr <- gep malloced [i32 @Integer 0]
                 store argument mallocedPtr
                 store malloced value
@@ -289,6 +290,21 @@ assembleExpr (Core.Typed taggedType expr) =
                     (global (TyFun [] Void) (fst3 exitFailure))
                     []
             pure (undef taggedType)
+        Core.Malloc expr -> do
+            comment "Malloc"
+            operand <- assembleExpr expr
+            let operandType = typeOf operand
+            malloced <- malloc (ptr operandType) (i64 (sizeOf operandType))
+            comment $ show operand
+            store operand malloced
+            pure malloced
+        Core.Dereference expr -> do
+            comment "Dereference"
+            operand <- assembleExpr expr
+            -- TODO(sebsel): Do we need GEP?
+            ptr <- gep operand [i32 @Integer 0]
+            load (derefType (typeOf ptr)) ptr
+
 
 indexOf :: Core.Pattern -> Integer
 indexOf = \case
@@ -337,11 +353,11 @@ i32 = ConstantOperand . LInt Int32 . fromIntegral
 i64 :: (Integral a) => a -> Operand
 i64 = ConstantOperand . LInt Int64 . fromIntegral
 
+derefType :: Type -> Type
+derefType (PointerType ty) = ty
+derefType ty = error $ "Can not deref non-concrete pointer type `" <> show ty <> "`"
+
 getReturnType :: Type -> Type
 getReturnType = \case
     TyFun _ ty -> ty
     ty -> error $ "can not extract return type of non-function type: " <> show ty
-
-isFunType :: Type -> Bool
-isFunType (TyFun {}) = True
-isFunType _ = False

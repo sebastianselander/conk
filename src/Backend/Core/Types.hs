@@ -1,11 +1,11 @@
 module Backend.Core.Types where
 
+import Backend.Llvm.Types (Operand (LocalReference))
 import Backend.Types (Type (..))
 import Data.Data (Data)
 import Names (Ident, Namespace)
 import Origin (Origin (..))
 import Relude hiding (Type)
-import Backend.Llvm.Types (Operand(LocalReference))
 
 newtype Program = Program [Def]
     deriving (Show, Eq, Ord, Data)
@@ -24,8 +24,7 @@ data Arg = Arg Ident Type | EnvArg Type
 
 data Operand = ConstantOperand !Constant | LocalReference !Type !Ident
 
-
-data TyExpr = Typed Type Expr
+data TyExpr = Typed {typeOf :: Type, expr :: Expr}
     deriving (Show, Eq, Ord, Data)
 
 data Expr
@@ -45,6 +44,8 @@ data Expr
       ExtractFree Ident Ident Integer
     | StructIndexing TyExpr Integer
     | Match TyExpr [MatchArm] Catch
+    | Malloc TyExpr
+    | Dereference TyExpr
     | ToStderrExit Ident
     deriving (Show, Eq, Ord, Data)
 

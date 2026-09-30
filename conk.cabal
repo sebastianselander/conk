@@ -34,6 +34,7 @@ library
   exposed-modules:
     Backend.Core.Basic
     Backend.Core.Breaks
+    Backend.Core.Polymorphism
     Backend.Core.Core
     Backend.Core.Pretty
     Backend.Core.Types

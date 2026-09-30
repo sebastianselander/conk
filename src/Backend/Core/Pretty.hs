@@ -103,7 +103,8 @@ pDef (Fn _ name args typ exprs) =
         , hardline
         , indent 4 $ hcat $ punctuate hardline (fmap pExpr exprs)
         , hardline
-        ] <> "}"
+        ]
+        <> "}"
 
 pIdent :: Ident -> Doc ann
 pIdent (Ident name) = pretty name
@@ -165,6 +166,8 @@ pExpr (Typed _ expr) = go expr
                 <+> pExpr scrutinee
                 <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
         ToStderrExit txt -> "exit: " <> pretty txt
+        Malloc expr -> "malloc" <> parens (pExpr expr)
+        Dereference expr -> "*" <> parens (pExpr expr)
 
 pCatch :: Catch -> Doc ann
 pCatch (Catch name expr) = pretty name <+> "=>" <+> concatWith (surround (semi <> hardline)) (fmap pExpr (toList expr))

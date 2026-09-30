@@ -20,6 +20,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Tuple.Extra (uncurry3)
 import Frontend.Renamer.Types qualified as Rn (Boundedness (..))
+import Frontend.Tc qualified as Tc
 import Frontend.Typechecker.Types (FnType (..), stmtType, varType)
 import Frontend.Typechecker.Types qualified as Tc
 import Frontend.Types (Import (ImportExplicit), NoExtField (NoExtField), SourceInfo)
@@ -179,11 +180,13 @@ dsExpr = \case
         lit <- dsLit lit
         named $ typed ty lit
     Tc.Var (_info, ty, binding) name -> do
-        ty <- case binding of
-            Rn.Toplevel -> dsType ty
-            Rn.Constructor -> dsType ty
-            _ -> mkClosureType ty
-        pure $ Typed ty (Var (dsBound binding) name)
+        case ty of
+            Tc.TyFun {} -> do
+                closureType <- mkClosureType ty
+                originalType <- dsType ty
+                pure $ Typed closureType (Closure (Typed originalType (Var (dsBound binding) name)) [])
+            _ -> do
+                Typed <$> dsType ty <*> pure (Var (dsBound binding) name)
     Tc.BinOp (_, ty) l op r -> do
         l <- dsExpr l
         let op' = dsBinOp op

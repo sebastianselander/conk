@@ -152,7 +152,8 @@ rnConstructor = \case
     EnumCons loc name -> checkAndinsertConstrutor loc name >> pure (EnumCons loc name)
     FunCons loc name types ->
         checkAndinsertConstrutor loc name
-            >> FunCons loc name <$> mapM (renameType emptyTyParamList) types
+            >> FunCons loc name
+            <$> mapM (renameType emptyTyParamList) types
 
 rnBlock :: TyParamList -> BlockPar -> Gen BlockRn
 rnBlock tyParams (Block a stmts expr) =
@@ -164,7 +165,6 @@ rnStatement tyParams = \case
     SExpr a b -> do
         b <- rnExpr tyParams b
         pure $ SExpr a b
-
 
 rnExpr :: TyParamList -> ExprPar -> Gen ExprRn
 rnExpr tyParams = goRnExpr
@@ -188,11 +188,15 @@ rnExpr tyParams = goRnExpr
                             Nothing -> pure Nothing
                         )
                         (pure . Just)
-                    =<< maybe (fmap (\x -> (Toplevel, (namespace, x))) <$> (if isOk(fmap (namespace ==) ns) then boundFun variable else pure Nothing)) (pure . Just)
+                    =<< maybe
+                        ( fmap (\x -> (Toplevel, (namespace, x)))
+                            <$> (if isOk (fmap (namespace ==) ns) then boundFun variable else pure Nothing)
+                        )
+                        (pure . Just)
                     =<< ( maybe
                             (fmap (Free,) <$> boundArg variable)
                             ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
-                            =<< if isOk (fmap (namespace  ==) ns) then boundVar variable else pure Nothing
+                            =<< if isOk (fmap (namespace ==) ns) then boundVar variable else pure Nothing
                         )
             pure $ Var (info, namespace, bind) name
         Prefix info op expr -> Prefix info op <$> goRnExpr expr

@@ -4,10 +4,10 @@
 module Table where
 
 import Control.Lens.TH
-import Names (Ident, Namespace)
-import Relude hiding (Type)
 import Frontend.Builtin (Builtins)
 import Frontend.Types (Forall)
+import Names (Ident, Namespace)
+import Relude hiding (Type)
 
 data DefTable phase a info = Table
     { _builtIns :: Builtins phase
@@ -17,6 +17,5 @@ data DefTable phase a info = Table
     }
 
 deriving instance (Forall Show phase, Show a, Show info) => Show (DefTable phase a info)
-
 
 $(makeLenses ''DefTable)

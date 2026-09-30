@@ -5,17 +5,18 @@ module Frontend.Builtin where
 
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import Frontend.Typechecker.Types (Tc)
 import Frontend.Types
     ( Forall,
       NoExtField (NoExtField),
       SourceInfo (SourceInfo),
       TyLit (..),
       Type (..),
-      emptySpan, emptyTyParamList,
+      emptySpan,
+      emptyTyParamList,
     )
 import Names (Ident (..), Namespace (Namespace))
 import Relude hiding (Type)
-import Frontend.Typechecker.Types (Tc)
 
 newtype Builtins a = Builtins (Map Namespace (Map Ident (Type a, SourceInfo)))
 
