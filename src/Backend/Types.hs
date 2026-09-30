@@ -68,3 +68,7 @@ ptr = PointerType
 
 opaquePtr :: Type
 opaquePtr = OpaquePointer
+
+isOpaquePtr :: Type -> Bool
+isOpaquePtr OpaquePointer = True
+isOpaquePtr _ = False

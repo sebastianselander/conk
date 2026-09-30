@@ -1,5 +1,5 @@
-def compose<A,B,C>(f: fn(B) -> C, g: fn(A) -> B) -> fn(A) -> C {
-    \x -> f(g(x))
+def compose<A,B,C>(f: fn(B) -> C, g: fn(A) -> B, x: A) -> C {
+    f(g(x))
 }
 
 def inc(x: int) -> int {
@@ -11,8 +11,7 @@ def show(x: bool) -> string {
 }
 
 def main() {
-    let f = compose(show, \(n: int) -> n > 0);
-    let y = f(3);
+    let y = compose(show, \(n: int) -> n > 0, 3);
     std::printString(y);
     std::printChar('\n')
 }

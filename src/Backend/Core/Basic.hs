@@ -20,7 +20,6 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Tuple.Extra (uncurry3)
 import Frontend.Renamer.Types qualified as Rn (Boundedness (..))
-import Frontend.Tc qualified as Tc
 import Frontend.Typechecker.Types (FnType (..), stmtType, varType)
 import Frontend.Typechecker.Types qualified as Tc
 import Frontend.Types (Import (ImportExplicit), NoExtField (NoExtField), SourceInfo)
@@ -115,8 +114,8 @@ isMain _ = False
 dsFunction :: Tc.FnTc -> DsM Def
 dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info, _) stmts tail)) = do
     assign nameCounter 0 -- Start the name counter from 0 for each local scope
-    args <- (EnvArg (PointerType Void) :) <$> mapM dsArg args
-    returnType <- mkClosureType returnType
+    args <- mapM dsArg args
+    returnType <- dsType returnType
     case tail of
         Nothing -> mapM_ dsStmt stmts
         Just tail -> do
@@ -168,7 +167,7 @@ constructorAllocSize (Tc.FunCons (_loc, _) _ tys : cons) = do
     pure (max (fromIntegral size) rest)
 
 dsArg :: Tc.Arg Tc.Tc -> DsM Arg
-dsArg (Tc.Arg NoExtField name ty) = Arg name <$> mkClosureType ty
+dsArg (Tc.Arg NoExtField name ty) = Arg name <$> dsType ty
 
 dsStmt :: Tc.StmtTc -> DsM TyExpr
 dsStmt = \case
@@ -179,14 +178,7 @@ dsExpr = \case
     Tc.Lit (_info, ty) lit -> do
         lit <- dsLit lit
         named $ typed ty lit
-    Tc.Var (_info, ty, binding) name -> do
-        case ty of
-            Tc.TyFun {} -> do
-                closureType <- mkClosureType ty
-                originalType <- dsType ty
-                pure $ Typed closureType (Closure (Typed originalType (Var (dsBound binding) name)) [])
-            _ -> do
-                Typed <$> dsType ty <*> pure (Var (dsBound binding) name)
+    Tc.Var (_info, ty, binding) name -> Typed <$> dsType ty <*> pure (Var (dsBound binding) name)
     Tc.BinOp (_, ty) l op r -> do
         l <- dsExpr l
         let op' = dsBinOp op
@@ -199,31 +191,16 @@ dsExpr = \case
     Tc.App (_info, ty) l rs -> do
         l <- dsExpr l
         rs <- mapM dsExpr rs
-        ty <- mkClosureType ty
-        case l of
-            Typed _ (Var Toplevel _) -> named $ pure $ Typed ty (App l (Typed (PointerType Void) (Constant NullLit) : rs))
-            Typed lty l -> do
-                let function = StructIndexing (Typed lty l) 0
-                let env = StructIndexing (Typed lty l) 1
-                named $ pure $ Typed ty (App (Typed lty function) (Typed (PointerType Void) env : rs))
+        ty <- dsType ty
+        named $ pure $ Typed ty (App l rs)
     Tc.Let info name expr -> do
         (list, expr) <- contextually $ dsExpr expr
-        case expr of
-            Typed _ (Var Toplevel _) -> do
-                varty <- dsType $ view varType info
-                let tupleTy = StructType [varty, PointerType Void]
-                unnamed
-                    $ typed
-                        (view stmtType info)
-                        (Let name tupleTy (Just $ Typed tupleTy $ Closure expr []))
-                unitGlobalVariable
-            _ -> do
-                mapM_ emit list
-                let letTy = view stmtType info
-                let exprTy = view varType info
-                exprTy <- mkClosureType exprTy
-                unnamed $ typed letTy (Let name exprTy (Just expr))
-                unitGlobalVariable
+        mapM_ emit list
+        let letTy = view stmtType info
+        let exprTy = view varType info
+        exprTy <- dsType exprTy
+        unnamed $ typed letTy (Let name exprTy (Just expr))
+        unitGlobalVariable
     Tc.Ass (info, binding) name op expr -> do
         named $ typed (view stmtType info) =<< ass name (view varType info) binding op expr
     Tc.Ret (_info, ty) expr -> do
@@ -231,7 +208,7 @@ dsExpr = \case
         unnamed $ typed ty (Return (fromMaybe unit expr))
         unitGlobalVariable
     Tc.EBlock NoExtField block@(Tc.Block (_, ty) _ _) -> do
-        ty <- mkClosureType ty
+        ty <- dsType ty
         var <- declare ty
         f <- ask
         block <- dsBlock f var block
@@ -249,7 +226,7 @@ dsExpr = \case
                 unnamed $ typed ty Break
                 unitGlobalVariable
     Tc.If (_info, ty) cond trueBlk mbFalseBlk -> do
-        ty' <- mkClosureType ty
+        ty' <- dsType ty
         var <- declare ty'
         cond <- dsExpr cond
         f <- ask
@@ -259,13 +236,13 @@ dsExpr = \case
         named $ pure $ Typed ty' (Var Bound var)
     Tc.While (_info, ty) cond block -> do
         cond <- dsExpr cond
-        ty' <- mkClosureType ty
+        ty' <- dsType ty
         var <- declare ty'
         block <- dsBlock (emit . Typed Unit . Ass var ty') var block
         unnamed $ typed ty (While cond block)
         named $ pure $ Typed Unit (Var Bound var)
     Tc.Loop (_info, ty) block -> do
-        ty' <- mkClosureType ty
+        ty' <- dsType ty
         var <- declare ty'
         block <- dsBlock (emit . Typed Unit . Ass var ty') var block
         unnamed $ typed ty (While true block)
@@ -275,35 +252,26 @@ dsExpr = \case
         freshName <- fresh "lambda"
         ty' <- dsType ty
         returnType <- case ty of
-            Tc.TyFun _ _ retty -> mkClosureType retty
+            Tc.TyFun _ _ retty -> dsType retty
             nonFunTy ->
                 error
                     $ "Internal compiler bug: non-function type '"
                     <> show nonFunTy
                     <> "' on lambda when lifting"
         (lambdaBody, expr) <- contextually $ dsExpr body
-        let freeVariables = sort $ nub $ concatMap (freeVars (boundArgs args)) (expr : toList lambdaBody)
-        let declareFrees = zipWith (lookupFree env) [0 ..] freeVariables
-        closureTy <- mkClosureType ty
         modifying
             lifted
             ( `snoc`
                 Fn
                     Lifted
                     freshName
-                    (EnvArg (PointerType Void) : args)
+                    args
                     returnType
-                    (declareFrees <> toList (lambdaBody `snoc` Typed returnType (Return expr)))
+                    (toList (lambdaBody `snoc` Typed returnType (Return expr)))
             )
-        pure
-            $ Typed
-                closureTy
-                ( Closure
-                    (Typed ty' (Var Toplevel freshName))
-                    (fmap (\(ty, name) -> Typed ty (Var Free name)) freeVariables)
-                )
+        pure (Typed ty' (Var Toplevel freshName))
     Tc.Match (loc, ty) scrutinee matchArms -> do
-        ty <- mkClosureType ty
+        ty <- dsType ty
         scrutinee <- dsExpr scrutinee
         matchArms <- dsMatchArms matchArms
         matchArms <- extractCatch loc matchArms
@@ -349,7 +317,7 @@ dsPat = \case
     Tc.PFunCon _loc name nestedPats -> do
         index <- lookupCon name
         let toVar (Tc.PVar (_, ty) name) = do
-                ty <- mkClosureType ty
+                ty <- dsType ty
                 pure (name, ty)
             toVar _ = error "Internal compiler crash: Nested pattern matching not supported yet"
         Right . PCon index <$> mapM toVar nestedPats
@@ -359,13 +327,6 @@ boundArgs [] = []
 boundArgs (x : xs) = case x of
     Arg name ty -> (ty, name) : boundArgs xs
     _ -> boundArgs xs
-
-mkClosureType :: (Monad m) => Tc.TypeTc -> m Type
-mkClosureType (Tc.TyFun _ ls r) = do
-    ls <- mapM mkClosureType ls
-    r <- mkClosureType r
-    pure $ StructType [TyFun ls r, PointerType Void]
-mkClosureType ty = dsType ty
 
 dsType :: (Monad m) => Tc.TypeTc -> m Type
 dsType = \case
@@ -380,7 +341,7 @@ dsType = \case
     Tc.TyFun _ l r -> do
         ls <- mapM dsType l
         r <- dsType r
-        pure $ TyFun (PointerType Void : ls) r
+        pure $ TyFun ls r
     Tc.Type Tc.AnyX -> pure Unit -- NOTE: `Any` is only the type
     -- of `return` and `break` so that they can be placed anywhere.
 
@@ -406,7 +367,7 @@ freeVars xs expr =
 
 mkArg :: (Monad m) => Tc.LamArgTc -> m Arg
 mkArg (Tc.LamArg ty name) = do
-    ty <- mkClosureType ty
+    ty <- dsType ty
     pure (Arg name ty)
 
 -- TODO: Rewrite
@@ -438,7 +399,7 @@ dsBlock f variable (Tc.Block (_, ty) stmts (Just tail)) = do
     cons <- use constructorIndex
     let ((), Env emits names'' n' lifteds strings _) =
             run cons f names' n $ do
-                ty <- mkClosureType ty
+                ty <- dsType ty
                 mapM_ dsStmt stmts
                 tail <- dsExpr tail
                 emit $ Typed Unit $ Ass variable ty tail
@@ -463,7 +424,7 @@ dsLit = \case
 ass :: Ident -> Tc.TypeTc -> Rn.Boundedness -> Tc.AssignOp -> Tc.Expr Tc.Tc -> DsM Expr
 ass name typ binding op xpr = do
     expr <- dsExpr xpr
-    ty <- mkClosureType typ
+    ty <- dsType typ
     let assignment operator =
             pure
                 $ Ass

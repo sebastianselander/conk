@@ -7,13 +7,14 @@ This pass makes sure polymorphic functions' arguments are passed as pointers and
 module Backend.Core.Polymorphism where
 
 import Backend.Core.Types (Expr (App, Dereference, Malloc), Program, TyExpr (Typed), typeOf)
-import Backend.Types (Type (OpaquePointer, TyFun, PointerType))
+import Backend.Types (Type (OpaquePointer, TyFun, PointerType), isOpaquePtr)
 import Data.Generics (everywhere, mkT)
 import Relude hiding (Type)
 
 applyIndirection :: Program -> Program
 applyIndirection = everywhere (mkT indirection)
 
+-- This should not apply to polymorphic functions
 indirection :: TyExpr -> TyExpr
 indirection og@(Typed exprTy (App func args)) = case func.typeOf of
     TyFun argTys retTy ->
@@ -39,3 +40,4 @@ mallocIfOpaque :: Type -> TyExpr -> TyExpr
 mallocIfOpaque ty expr = case ty of
     OpaquePointer -> Typed (PointerType expr.typeOf) (Malloc expr)
     _ -> expr
+
