@@ -111,7 +111,7 @@ assembleExpr (Core.Typed taggedType expr) =
                 Core.Free -> load taggedType $ LocalReference (ptr taggedType) name
                 Core.Bound -> load taggedType $ LocalReference (ptr taggedType) name
                 Core.Toplevel -> pure $ global taggedType name
-                Core.GlblConst -> do
+                Core.GlobalConstant -> do
                     -- NOTE: This will not work with global strings
                     op <- gep (global (ptr taggedType) name) [i32 @Integer 0]
                     load taggedType op

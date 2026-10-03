@@ -65,7 +65,7 @@ unitGlobalName :: Ident
 unitGlobalName = Ident globalUnit
 
 unitGlobalVariable :: DsM TyExpr
-unitGlobalVariable = pure $ Typed Unit (Var GlblConst unitGlobalName)
+unitGlobalVariable = pure $ Typed Unit (Var GlobalConstant unitGlobalName)
 
 unnamed :: DsM TyExpr -> DsM ()
 unnamed thing = do

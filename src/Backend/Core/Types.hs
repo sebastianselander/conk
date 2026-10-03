@@ -62,7 +62,7 @@ data Binding
     | Toplevel
     | Argument
     | Constructor
-    | GlblConst
+    | GlobalConstant
     | Lambda
     deriving (Show, Eq, Ord, Data)
 
