@@ -31,6 +31,7 @@ data RnError
     | ConflictingTypeParameter SourceInfo TyVar
     | DuplicateToplevels SourceInfo Ident
     | UnboundImport SourceInfo Namespace
+    | FreeVarsNotAllowed SourceInfo Ident
     deriving (Show)
 
 data TcError
@@ -89,6 +90,7 @@ reportRnError err = case err of
     ConflictingTypeParameter info name -> combineRn info (unwords ["Conflicting definitions for", quote $ pThing name])
     DuplicateToplevels info name -> combineRn info (unwords ["Definition", quote $ pThing name, "already declared earlier"])
     UnboundImport loc namespace -> combineRn loc (unwords ["Import", quote $ pThing namespace, "does not exist"])
+    FreeVarsNotAllowed loc name -> combineRn loc (unwords ["Capturing variable: `", quote $ pThing name, "` not allowed in this context"])
 
 reportTcError :: TcError -> Text
 reportTcError err = case err of

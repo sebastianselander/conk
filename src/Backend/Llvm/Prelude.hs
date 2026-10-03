@@ -64,7 +64,7 @@ printString =
     , Just
         [i|
 @snl = internal constant [3 x i8] c"%s\\00"
-define i1 @#{name}(ptr %env, i8* %x) {
+define i1 @#{name}(i8* %x) {
     %t0 = getelementptr [3 x i8], [3 x i8]* @snl, i32 0, i32 0
 	call i32 @printf(i8* %t0, i8* %x)
 	ret i1 1
@@ -81,7 +81,7 @@ printChar =
     , Just
         [i|
 @cnl = internal constant [3 x i8] c"%c\\00"
-define i1 @#{name}(ptr %env, i8 %x) {
+define i1 @#{name}(i8 %x) {
     %t0 = getelementptr [3 x i8], [3 x i8]* @cnl, i32 0, i32 0
 	call i32 @printf(i8* %t0, i8 %x)
 	ret i1 1
@@ -128,7 +128,7 @@ printInt =
     , Just
         [i|
 @dnl = internal constant [3 x i8] c"%d\\00"
-define i1 @#{name}(ptr %env, i64 %x) {
+define i1 @#{name}(i64 %x) {
     %t0 = getelementptr [3 x i8], [3 x i8]* @dnl, i32 0, i32 0
 	call i32 @printf(i8* %t0, i64 %x)
 	ret i1 1

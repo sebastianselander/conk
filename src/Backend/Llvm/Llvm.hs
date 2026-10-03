@@ -74,7 +74,7 @@ assembleCon index name ty = \case
             [ Define
                 ConstructorFn
                 constructorFun
-                (localRef opaquePtr (Ident "env") : operands)
+                operands
                 retty
                 instrs
             , Define Top name [] ty [Nameless $ Ret $ global ty constructorFun]
@@ -103,12 +103,9 @@ assembleExpr (Core.Typed taggedType expr) =
                         TyFun _ _ -> do
                             fun <- call taggedType (global taggedType name) []
                             name <- fresh
-                            let structType = StructType [taggedType, opaquePtr]
+                            let structType = taggedType
                             alloced <- alloca name structType
-                            funPtr <- gep alloced [i32 @Integer 0, i32 @Integer 0]
-                            envPtr <- gep alloced [i32 @Integer 0, i32 @Integer 1]
-                            store fun funPtr
-                            store (null opaquePtr) envPtr
+                            store fun alloced
                             load structType alloced
                         _ -> call taggedType (global taggedType name) []
                 Core.Free -> load taggedType $ LocalReference (ptr taggedType) name
@@ -290,20 +287,6 @@ assembleExpr (Core.Typed taggedType expr) =
                     (global (TyFun [] Void) (fst3 exitFailure))
                     []
             pure (undef taggedType)
-        Core.Malloc expr -> do
-            comment "Malloc"
-            operand <- assembleExpr expr
-            let operandType = typeOf operand
-            malloced <- malloc (ptr operandType) (i64 (sizeOf operandType))
-            comment $ show operand
-            store operand malloced
-            pure malloced
-        Core.Dereference expr -> do
-            comment "Dereference"
-            operand <- assembleExpr expr
-            -- TODO(sebsel): Do we need GEP?
-            ptr <- gep operand [i32 @Integer 0]
-            load (derefType (typeOf ptr)) ptr
 
 
 indexOf :: Core.Pattern -> Integer

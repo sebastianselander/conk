@@ -13,7 +13,6 @@ import Control.Lens.Getter (use, uses, view)
 import Control.Lens.Setter (assign, modifying, (+=))
 import Control.Monad.Extra (concatMapM)
 import Data.DList hiding (concat)
-import Data.List (nub)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set

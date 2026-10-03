@@ -6,8 +6,8 @@ This pass makes sure polymorphic functions' arguments are passed as pointers and
 
 module Backend.Core.Polymorphism where
 
-import Backend.Core.Types (Expr (App, Dereference, Malloc), Program, TyExpr (Typed), typeOf)
-import Backend.Types (Type (OpaquePointer, TyFun, PointerType), isOpaquePtr)
+import Backend.Core.Types (Expr (App), Program, TyExpr (Typed), typeOf)
+import Backend.Types (Type (OpaquePointer, TyFun, PointerType))
 import Data.Generics (everywhere, mkT)
 import Relude hiding (Type)
 

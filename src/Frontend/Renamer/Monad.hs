@@ -18,6 +18,7 @@ module Frontend.Renamer.Monad
       emptyEnv,
       localDefinitions,
       importedDefinitions,
+      freeVarsAllowed,
       importName,
       namespace,
       numbering,
@@ -54,7 +55,7 @@ data Env = Env
     { _newToOld :: Map Ident Ident
     , _numbering :: Map Ident Int
     , _scope :: NonEmpty (Map Ident Ident)
-    , _arguments :: Map Ident (Namespace, Ident)
+    , _arguments :: NonEmpty (Map Ident (Namespace, Ident))
     , _constructors :: Map Ident Namespace
     , _importedDefinitions :: Map Ident Namespace -- symbol name to namespaced symbol name
     , _importName :: Map Ident Namespace -- as-name to import name (path)
@@ -62,7 +63,8 @@ data Env = Env
     deriving (Show)
 
 data Ctx = Ctx
-    { _localDefinitions :: Set Ident
+    { _freeVarsAllowed :: Bool
+    , _localDefinitions :: Set Ident
     , _namespace :: Namespace
     , _builtins :: Builtins Tc
     , _allVars :: Map Namespace (Set Ident)
@@ -90,7 +92,7 @@ emptyEnv imported =
         { _newToOld = mempty
         , _numbering = mempty
         , _scope = return mempty
-        , _arguments = mempty
+        , _arguments = mempty :| []
         , _constructors = mempty
         , _importedDefinitions = imported
         , _importName = mempty
@@ -103,7 +105,7 @@ createCtx ::
     Set Namespace ->
     Set Ident ->
     Ctx
-createCtx = Ctx mempty
+createCtx = Ctx True mempty
 
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
 runGen env ctx =
@@ -131,8 +133,19 @@ boundImported namespaceToExlucde name = do
 boundCons :: (MonadState Env m) => Ident -> m (Maybe (Namespace, Ident))
 boundCons name = uses constructors (fmap (,name) . Map.lookup name)
 
-boundArg :: (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Namespace, Ident))
-boundArg name = uses arguments (Map.lookup name)
+boundArg ::
+    (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Boundedness, (Namespace, Ident)))
+boundArg name = do
+    (close :| rest) <- use arguments
+    case Map.lookup name close of
+        Just (ns, name) -> pure (Just (Bound, (ns, name)))
+        Nothing -> pure ((Free,) <$> findArg name rest)
+  where
+    findArg :: Ident -> [Map Ident (Namespace, Ident)] -> Maybe (Namespace, Ident)
+    findArg _ [] = Nothing
+    findArg name (x : xs) = case Map.lookup name x of
+        Just info -> pure info
+        Nothing -> findArg name xs
 
 lookupBuiltin :: (MonadReader Ctx m) => Namespace -> Ident -> m (Maybe (Namespace, Ident))
 lookupBuiltin namespace name = do
@@ -182,14 +195,16 @@ insertArg namespace name@(Ident nm) = do
     let name' = Ident $ nm <> "$" <> show n
     modifying newToOld (Map.insert name' name)
     modifying numbering (Map.insert name n)
-    modifying arguments (Map.insert name (namespace, name'))
+    (close :| rest) <- use arguments
+    let args = Map.insert name (namespace, name') close :| rest
+    assign arguments args
     pure (namespace, name')
 
 insertImportName :: (MonadState Env m) => Ident -> Namespace -> m ()
 insertImportName name path = modifying importName (Map.insert name path)
 
 resetArgs :: (MonadState Env m) => m ()
-resetArgs = modifying arguments mempty
+resetArgs = assign arguments (mempty :| [])
 
 checkAndinsertConstrutor ::
     (MonadValidate [RnError] m, MonadState Env m, MonadReader Ctx m) => SourceInfo -> Ident -> m ()

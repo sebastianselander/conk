@@ -8,5 +8,3 @@ def main() {
     std::printInt(x);
     std::printChar('\n')
 }
-
-compose([], {show, []}, {lambda_1, []})

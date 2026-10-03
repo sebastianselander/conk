@@ -4,12 +4,12 @@ type Foo {
 
 def main() {
     let thing = Foo(1337);
-    let f: fn() -> () =
-        \ -> match thing {
+    let f: () =
+        match thing {
             Foo(foonumber) => {
                 std::printInt(foonumber);
                 std::printString("\n")
             },
         };
-    f()
+    f
 }

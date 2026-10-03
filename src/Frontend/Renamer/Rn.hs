@@ -21,6 +21,9 @@ import Frontend.Utils (isUnique)
 import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
 import Relude hiding (intercalate)
 import Utils (listify')
+import Data.List.NonEmpty ((<|))
+import Control.Lens.Getter (use)
+import Control.Lens.Setter (assign)
 
 rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename namespaces symbolMap prg@(Program namespace defs) =
@@ -173,6 +176,7 @@ rnExpr tyParams = goRnExpr
     goRnExpr = \case
         Lit info lit -> Lit info <$> rnLit lit
         Var (info, ns) variable -> do
+            freeVarsAllowed <- view freeVarsAllowed
             namespace <- view namespace
             let isOk Nothing = True
                 isOk (Just x) = x
@@ -194,10 +198,13 @@ rnExpr tyParams = goRnExpr
                         )
                         (pure . Just)
                     =<< ( maybe
-                            (fmap (Free,) <$> boundArg variable)
+                            (boundArg variable)
                             ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
                             =<< if isOk (fmap (namespace ==) ns) then boundVar variable else pure Nothing
                         )
+            case bind of 
+                Free | not freeVarsAllowed -> freeVarsNotAllowed info variable
+                _ -> pure ()
             pure $ Var (info, namespace, bind) name
         Prefix info op expr -> Prefix info op <$> goRnExpr expr
         BinOp info l op r -> do
@@ -218,7 +225,7 @@ rnExpr tyParams = goRnExpr
             (bind, (namespace, name)) <-
                 maybe ((Free, (namespace, Ident "unbound")) <$ unboundVariable info variable) pure
                     =<< ( maybe
-                            (fmap (Free,) <$> boundArg variable)
+                            (boundArg variable)
                             ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
                             =<< boundVar variable
                         )
@@ -242,8 +249,11 @@ rnExpr tyParams = goRnExpr
             pure $ While a b stmts
         Loop info block -> Loop info <$> rnBlock tyParams block
         Lam info args body -> do
+            oldArgs <- use arguments
+            modifying arguments (mempty <|)
             args <- rnLamArgs tyParams args
-            body <- newContext $ goRnExpr body
+            body <- locally freeVarsAllowed (const False) $ newContext $ goRnExpr body
+            assign arguments oldArgs
             pure $ Lam info args body
         Match info scrutinee arms -> do
             scrutinee <- goRnExpr scrutinee

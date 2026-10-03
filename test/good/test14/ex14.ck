@@ -6,7 +6,7 @@ def foo(x: int) -> fn(int, string, bool, int) -> () {
         std::printString("\n");
         printBool(c);
         std::printString("\n");
-        std::printInt(d+x);
+        std::printInt(d);
         std::printString("\n");
     }
 }

@@ -1,6 +1,5 @@
-// BUG AS FUCK, it works with 1 fewer arguments to lambda
 def foo(x: int) -> fn(int,int,int,int) -> int {
-    return \a b c d -> a + b + c + d + x
+    return \a b c d -> a + b + c + d
 }
 
 def main() {

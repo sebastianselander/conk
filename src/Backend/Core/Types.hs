@@ -44,8 +44,6 @@ data Expr
       ExtractFree Ident Ident Integer
     | StructIndexing TyExpr Integer
     | Match TyExpr [MatchArm] Catch
-    | Malloc TyExpr
-    | Dereference TyExpr
     | ToStderrExit Ident
     deriving (Show, Eq, Ord, Data)
 
