@@ -1,10 +1,17 @@
-def apply<A>(f: fn(A) -> A, x: A) -> A {
-    f(x)
+def compose<A,B,C>(f: fn(B) -> C, g: fn(A) -> B, x: A) -> C {
+    f(g(x))
+}
+
+def inc(x: int) -> int {
+    x + 1
+}
+
+def show(x: bool) -> string {
+    if x { "yes" } else { "no" }
 }
 
 def main() {
-    let inc = \(x: int) -> x + 1;
-    let x = apply(inc, 1);
-    std::printInt(x);
+    let y = compose(show, \(n: int) -> n > 0, 3);
+    std::printString(y);
     std::printChar('\n')
 }

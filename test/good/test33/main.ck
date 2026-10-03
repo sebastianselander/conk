@@ -1,6 +1,6 @@
-import foo (foo);
+import basic as inc;
 
 def main() {
-    std::printInt(foo(123));
+    std::printInt(inc::inc(68));
     std::printChar('\n')
 }

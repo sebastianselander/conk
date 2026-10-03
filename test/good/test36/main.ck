@@ -1,9 +1,8 @@
-import foo::bar::baz;
-import foo::qux;
+def id<A>(x: A) -> A {
+    x
+}
 
 def main() {
-    let sixtynine = 69;
-    foo::bar::baz::poop(sixtynine);
-    foo::qux::pee(sixtynine);
-    return
+    let b = id("hej\n");
+    std::printString(b);
 }
