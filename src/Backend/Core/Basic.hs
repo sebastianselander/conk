@@ -26,7 +26,7 @@ import Frontend.Types qualified as Tc
 import Names (Ident (..), Names, Namespace, existName, insertName)
 import Origin (Origin (..))
 import Relude hiding (Type, fromList, toList)
-import Utils (listify', mapWithIndexM)
+import Utils (mapWithIndexM)
 
 data Env = Env
     { _expressions :: DList TyExpr
@@ -128,8 +128,8 @@ dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info
     if isMain def
         then pure $ Main (toList emits)
         else case returnType of
-            (I 1) -> pure $ Fn Top name args returnType (toList $ emits `snoc` Typed (I 1) (Return unit))
-            _ -> pure $ Fn Top name args returnType (toList emits)
+            (I 1) -> pure $ Fn Function name args returnType (toList $ emits `snoc` Typed (I 1) (Return unit))
+            _ -> pure $ Fn Function name args returnType (toList emits)
 
 dsDef :: Tc.DefTc -> DsM [Def]
 dsDef (Tc.DefFn fn) = pure <$> dsFunction fn
@@ -321,15 +321,9 @@ dsPat = \case
             toVar _ = error "Internal compiler crash: Nested pattern matching not supported yet"
         Right . PCon index <$> mapM toVar nestedPats
 
-boundArgs :: [Arg] -> [(Type, Ident)]
-boundArgs [] = []
-boundArgs (x : xs) = case x of
-    Arg name ty -> (ty, name) : boundArgs xs
-    _ -> boundArgs xs
-
 dsType :: (Monad m) => Tc.TypeTc -> m Type
 dsType = \case
-    Tc.TypeVar NoExtField _ -> pure OpaquePointer
+    Tc.TypeVar bound _ -> pure OpaquePointer
     Tc.TyCon NoExtField name -> pure (TyCon name)
     Tc.TyLit NoExtField Tc.Unit -> pure Unit
     Tc.TyLit NoExtField Tc.String -> pure (PointerType (I 8))
@@ -343,26 +337,6 @@ dsType = \case
         pure $ TyFun ls r
     Tc.Type Tc.AnyX -> pure Unit -- NOTE: `Any` is only the type
     -- of `return` and `break` so that they can be placed anywhere.
-
-env :: Ident
-env = Ident "env"
-
-lookupFree :: Ident -> Integer -> (Type, Ident) -> TyExpr
-lookupFree env n (ty, var) = Typed ty $ ExtractFree var env n
-
--- TODO: (Sebastian) Rewrite and make a more robust implementation
-freeVars :: [(Type, Ident)] -> TyExpr -> [(Type, Ident)]
-freeVars xs expr =
-    let vars = Set.fromList $ listify' free expr
-        exclude = Set.fromList $ xs <> concat (listify' matchParams expr)
-     in Set.toList $ vars `Set.difference` exclude
-  where
-    free :: TyExpr -> Maybe (Type, Ident)
-    free (Typed ty (Var Free name)) = Just (ty, name)
-    free (Typed ty (Var Argument name)) = Just (ty, name)
-    free _ = Nothing
-    matchParams :: Pattern -> Maybe [(Type, Ident)]
-    matchParams (PCon _ xs) = Just (fmap swap xs)
 
 mkArg :: (Monad m) => Tc.LamArgTc -> m Arg
 mkArg (Tc.LamArg ty name) = do

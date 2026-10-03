@@ -12,7 +12,7 @@ import Names (Ident (..))
 import Relude hiding (exitFailure, exitSuccess)
 
 prelude :: ([Decl], Text)
-prelude =
+prelude = second (prologue <>) $
     foldl'
         (\(decls, acc) (decl, body) -> (decl : decls, acc <> "\n" <> addTxt decl body))
         ([], "")

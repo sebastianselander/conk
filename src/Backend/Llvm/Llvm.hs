@@ -77,7 +77,7 @@ assembleCon index name ty = \case
                 operands
                 retty
                 instrs
-            , Define Top name [] ty [Nameless $ Ret $ global ty constructorFun]
+            , Define Function name [] ty [Nameless $ Ret $ global ty constructorFun]
             ]
 
 assembleArg :: Core.Arg -> IRBuilder Operand

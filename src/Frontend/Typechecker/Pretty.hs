@@ -5,7 +5,7 @@
 module Frontend.Typechecker.Pretty where
 
 import Frontend.Typechecker.Types
-import Frontend.Types
+import Frontend.Types hiding (toList)
 import Names (Ident (..))
 import Prettyprinter (Doc, Pretty, (<+>))
 import Prettyprinter qualified as Pretty
@@ -108,6 +108,7 @@ prettyType2 = \case
     ty@TyFun {} -> Pretty.parens (Pretty.pretty ty)
     Type AnyX -> "Any"
     TypeVar _ tyvar -> Pretty.pretty tyvar
+    Type (MonoType n) -> "%mono" <> show n
 
 instance Pretty ExprTc where
     pretty = prettyExpr1

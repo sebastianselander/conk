@@ -5,7 +5,7 @@
 module Frontend.Parser.Pretty where
 
 import Frontend.Parser.Types
-import Frontend.Types
+import Frontend.Types hiding (toList)
 import Names (Ident (..))
 import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty

@@ -11,9 +11,10 @@ import Frontend.Types (SourceInfo)
 import Names (Names)
 import Relude (Show)
 import Table (DefTable)
+import Frontend.Typechecker.Polytype (PolyType)
 
 data Ctx = Ctx
-    { _defTable :: DefTable Tc TypeTc SourceInfo
+    { _defTable :: DefTable Tc (PolyType Tc) SourceInfo
     , _returnType :: TypeTc
     , _currentFun :: FnRn
     , _exprStack :: [ExprRn]

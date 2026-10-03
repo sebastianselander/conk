@@ -40,21 +40,21 @@ builtins =
                 [
                     ( Ident "printInt"
                     ,
-                        ( TyFun emptyTyParamList [TyLit NoExtField Int] (TyLit NoExtField Unit)
+                        ( TyFun NoExtField [TyLit NoExtField Int] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )
                 ,
                     ( Ident "printString"
                     ,
-                        ( TyFun emptyTyParamList [TyLit NoExtField String] (TyLit NoExtField Unit)
+                        ( TyFun NoExtField [TyLit NoExtField String] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )
                 ,
                     ( Ident "printChar"
                     ,
-                        ( TyFun emptyTyParamList [TyLit NoExtField Char] (TyLit NoExtField Unit)
+                        ( TyFun NoExtField [TyLit NoExtField Char] (TyLit NoExtField Unit)
                         , SourceInfo emptySpan "Built in"
                         )
                     )

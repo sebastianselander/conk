@@ -84,6 +84,9 @@ emptyTyParamList = Params emptyInfo []
 member :: TyVar -> TyParamList -> Bool
 member tyvar (Params _ xs) = tyvar `elem` xs
 
+toList :: TyParamList -> [TyVar]
+toList (Params _ xs) = xs
+
 toMap :: TyParamList -> Map TyVar (Maybe (Type a))
 toMap (Params _ xs) = Map.fromList (fmap (,Nothing) xs)
 

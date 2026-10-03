@@ -15,7 +15,7 @@ import Relude hiding (Any, Type)
 
 data Tc deriving (Data)
 
-data FnType = FnType {retType :: TypeTc, argTypes :: [TypeTc]}
+data FnType = FnType {tyvars :: [TyVar], retType :: TypeTc, argTypes :: [TypeTc]}
     deriving (Show, Eq, Ord, Data)
 
 type ProgramTc = Program Tc
@@ -95,7 +95,7 @@ type instance XBoolLit Tc = NoExtField
 type instance XUnitLit Tc = NoExtField
 
 type instance XTyLit Tc = NoExtField
-type instance XTyFun Tc = TyParamList
+type instance XTyFun Tc = NoExtField
 type instance XTyCon Tc = NoExtField
 type instance XTypeVar Tc = NoExtField
 type instance XType Tc = MetaTy
@@ -112,9 +112,15 @@ pattern Any <- Type AnyX
     where
         Any = Type AnyX
 
-data MetaTy = AnyX
+pattern Monotype :: (XType a ~ MetaTy) => Int -> Type a
+pattern Monotype n <- Type (MonoType n)
+    where
+      Monotype n = Type (MonoType n)
+
+data MetaTy = AnyX | MonoType Int
     deriving (Show, Eq, Ord, Data)
 
 data StmtType = StmtType {_stmtType :: TypeTc, _varType :: TypeTc, _stmtInfo :: SourceInfo}
     deriving (Show, Eq, Ord, Data)
+
 $(makeLenses ''StmtType)

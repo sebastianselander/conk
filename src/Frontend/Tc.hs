@@ -27,6 +27,7 @@ import Relude.Unsafe (fromJust)
 import Table (DefTable, builtIns, functions)
 import Table qualified as DefTable
 import Utils (chain, listify')
+import Frontend.Typechecker.Polytype (PolyType (PolyType), instantiate)
 
 newtype Env = Env
     { _variables :: Map Ident (TypeTc, SourceInfo)
@@ -50,37 +51,40 @@ newtype TcM a = Tc
 run :: Ctx -> Env -> TcM a -> (Either [TcError] a, [TcWarning])
 run ctx env = runWriter . runValidateT . flip runReaderT ctx . flip evalStateT env . runTc
 
-getFuns :: (Data a) => a -> [(Ident, (TypeTc, SourceInfo))]
+getFuns :: (Data a) => a -> [(Ident, (PolyType Tc, SourceInfo))]
 getFuns = listify' f
   where
-    f :: FnRn -> Maybe (Ident, (TypeTc, SourceInfo))
-    f (Fn info name tyParamList args returnType _) =
-        let funTy = TyFun tyParamList (fmap typeOf args) (typeOf returnType)
+    f :: FnRn -> Maybe (Ident, (PolyType Tc, SourceInfo))
+    f (Fn info name (Params _ tyvars) args returnType _) =
+        let funTy = PolyType tyvars (TyFun NoExtField (fmap typeOf args) (typeOf returnType))
          in Just (name, (funTy, info))
 
 data TypeCons = TypeCons
-    { types :: [(Ident, (TypeTc, SourceInfo))]
-    , cons :: [(Ident, (TypeTc, SourceInfo))]
+    { types :: [(Ident, (PolyType Tc, SourceInfo))]
+    , cons :: [(Ident, (PolyType Tc, SourceInfo))]
     }
 
 getTypesAndCons :: (Data a) => a -> TypeCons
 getTypesAndCons a = TypeCons {types = listify' h a, cons = concat (listify' f a)}
   where
-    h :: AdtRn -> Maybe (Ident, (TypeTc, SourceInfo))
-    h (Adt loc name _) = Just (name, (TyCon NoExtField name, loc))
-    f :: AdtRn -> Maybe [(Ident, (TypeTc, SourceInfo))]
+    h :: AdtRn -> Maybe (Ident, (PolyType Tc, SourceInfo))
+    -- TODO: Add type params to polytype
+    h (Adt loc name _) = Just (name, (PolyType [] $ TyCon NoExtField name, loc))
+
+    f :: AdtRn -> Maybe [(Ident, (PolyType Tc, SourceInfo))]
     f (Adt _ name cons) =
+        -- TODO: Add type params to polytype
         let returnType = TyCon NoExtField name
          in Just $ fmap (g returnType) cons
       where
-        g :: TypeTc -> ConstructorRn -> (Ident, (TypeTc, SourceInfo))
+        g :: TypeTc -> ConstructorRn -> (Ident, (PolyType Tc, SourceInfo))
         g returnType = \case
-            EnumCons loc name -> (name, (returnType, loc))
+            EnumCons loc name -> (name, (PolyType [] $ returnType, loc))
             FunCons loc name argTys ->
-                (name, (TyFun emptyTyParamList (fmap typeOf argTys) returnType, loc))
+                (name, (PolyType [] $ TyFun NoExtField (fmap typeOf argTys) returnType, loc))
 
 tc ::
-    DefTable Tc TypeTc SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
+    DefTable Tc (PolyType Tc) SourceInfo -> Names -> ProgramRn -> (Either [TcError] ProgramTc, [TcWarning])
 tc defTable names (Program _namespace defs) =
     case first partitionEithers $ unzip $ fmap (tcDefs names defTable) defs of
         (([], defs), warnings) -> (Right $ Program NoExtField defs, mconcat warnings)
@@ -88,7 +92,7 @@ tc defTable names (Program _namespace defs) =
 
 tcDefs ::
     Names ->
-    DefTable Tc TypeTc SourceInfo ->
+    DefTable Tc (PolyType Tc) SourceInfo ->
     DefRn ->
     (Either [TcError] DefTc, [TcWarning])
 tcDefs names table (DefFn fn) =
@@ -96,9 +100,9 @@ tcDefs names table (DefFn fn) =
 tcDefs _ _ (DefAdt adt) = first (Right . DefAdt) $ tcAdt adt
 tcDefs _ table (DefImport imp) = (Right (DefImport (tcImport table imp)), [])
 
-tcImport :: DefTable Tc TypeTc SourceInfo -> ImportRn -> ImportTc
+tcImport :: DefTable Tc (PolyType Tc) SourceInfo -> ImportRn -> ImportTc
 tcImport table (ImportExplicit _ namespace names) =
-    let funs :: Map Ident (TypeTc, SourceInfo)
+    let funs :: Map Ident (PolyType Tc, SourceInfo)
         funs =
             fromMaybe
                 ( error
@@ -108,7 +112,7 @@ tcImport table (ImportExplicit _ namespace names) =
                     <> show (view functions table)
                 )
                 $ Map.lookup namespace (view functions table)
-        tys :: [(TypeTc, SourceInfo)]
+        tys :: [(PolyType Tc, SourceInfo)]
         tys =
             fmap
                 ( \symbol ->
@@ -125,9 +129,9 @@ tcImport table (ImportExplicit _ namespace names) =
                         (Map.lookup symbol funs)
                 )
                 names
-        mkFnType :: (TypeTc, SourceInfo) -> FnType
+        mkFnType :: (PolyType Tc, SourceInfo) -> FnType
         mkFnType (ty, _) = case ty of
-            TyFun _ args ret -> FnType ret args
+            PolyType tvars (TyFun _ args ret) -> FnType tvars ret args
             ty -> error $ "Imported symbol is not a function: " <> show ty
      in ImportExplicit (fmap mkFnType tys) namespace names
 
@@ -140,11 +144,11 @@ inferConstructor ty = \case
     EnumCons loc name -> EnumCons (loc, ty) name
     FunCons loc name types ->
         let types' = fmap typeOf types
-         in FunCons (loc, TyFun emptyTyParamList types' ty) name types'
+         in FunCons (loc, TyFun NoExtField types' ty) name types'
 
 tcFunction ::
     Names ->
-    DefTable Tc TypeTc SourceInfo ->
+    DefTable Tc (PolyType Tc) SourceInfo ->
     FnRn ->
     (Either [TcError] FnTc, [TcWarning])
 tcFunction names defTable fun@(Fn _ _ tyParams args rt _) =
@@ -242,9 +246,9 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         (ty, _declaredAtInfo) <- case boundedness of
             Free -> lookupVar name
             Bound -> lookupVar name
-            Toplevel -> lookupFun namespace name
-            Constructor -> lookupCon namespace name
-            Imported -> lookupFun namespace name
+            Toplevel -> first instantiate <$> lookupFun namespace name
+            Constructor -> first instantiate <$> lookupCon namespace name
+            Imported -> first instantiate <$> lookupFun namespace name
             Builtin -> do
                 builtins <- view (defTable . builtIns)
                 case Builtins.lookup namespace name builtins of
@@ -266,7 +270,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
     App info lExpr rExprs -> do
         lExpr <- infExpr lExpr
         let tcApp ty = case ty of
-                TyFun tyParamList argTys retTy -> do
+                TyFun NoExtField argTys retTy -> do
                     let argTysLength = length argTys
                     let rLength = length rExprs
                     if
@@ -289,13 +293,9 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                             r <- mapM infExpr rExprs
                             pure $ App (info, retTy) lExpr r
                         | otherwise -> do
-                            -- invariant: argTys and r are of equal length
                             rExprs <- mapM infExpr rExprs
-                            let sub = unifiesSubst info tyParamList (zip argTys (fmap typeOf rExprs))
-                            case sub of
-                                Nothing -> error "Could not unify"
-                                Just sub -> do
-                                    pure $ App (info, Sub.substitute sub retTy) lExpr rExprs
+                            zipWithM_ (unify info) argTys rExprs
+                            pure (App (info, retTy) lExpr rExprs)
                 ty -> do
                     retTy <- Any <$ applyNonFunction info ty
                     r <- mapM infExpr rExprs
@@ -387,7 +387,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                 pure $ LamArg ty name
         args <- mapM insertArg args
         body <- infExpr body
-        let ty = TyFun emptyTyParamList (fmap typeOf args) (typeOf body)
+        let ty = TyFun NoExtField (fmap typeOf args) (typeOf body)
         pure $ Lam (info, ty) args body
     Match loc scrutinee matchArms -> do
         scrutinee <- infExpr scrutinee
@@ -414,7 +414,7 @@ unifyArg ::
     ExprRn ->
     TcM (Map TyVar (Maybe TypeTc), ExprTc)
 unifyArg tyvarMap argType expr = case argType of
-    TypeVar NoExtField tyvar -> do
+    TypeVar bound tyvar -> do
         case Map.lookup tyvar tyvarMap of
             Just Nothing -> do
                 expr <- infExpr expr
@@ -441,11 +441,11 @@ tcPat pattype currentPattern = case currentPattern of
         insertVar varName pattype loc
         pure $ PVar (loc, pattype) varName
     PEnumCon (loc, namespace) conName -> do
-        (ty, _declLoc) <- lookupCon namespace conName
+        (ty, _declLoc) <- first instantiate <$> lookupCon namespace conName
         unify' loc pattype ty
         pure $ PEnumCon (loc, ty) conName
     PFunCon (loc, namespace) conName pats -> do
-        (ty, _declLoc) <- lookupCon namespace conName
+        (ty, _declLoc) <- first instantiate <$> lookupCon namespace conName
         case ty of
             TyFun tyParamList argtys retty
                 | length argtys == length pats -> do
@@ -636,7 +636,7 @@ lookupVar name =
             . Map.lookup name
         )
 
-lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupCon :: (MonadReader Ctx m) => Namespace -> Ident -> m (PolyType Tc, SourceInfo)
 lookupCon namespace name =
     views
         Ctx.defTable
@@ -650,7 +650,7 @@ lookupCon namespace name =
 lookupVarTy :: (MonadState Env m) => Ident -> m TypeTc
 lookupVarTy = fmap fst . lookupVar
 
-lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (TypeTc, SourceInfo)
+lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (PolyType Tc, SourceInfo)
 lookupFun namespace name =
     views
         (Ctx.defTable . DefTable.functions)
@@ -691,10 +691,10 @@ instance TypeOf BlockTc where
 
 instance TypeOf TypeRn where
     typeOf = \case
-        TyLit a b -> TyLit a b
-        TyFun a b c -> TyFun emptyTyParamList (fmap typeOf b) (typeOf c) -- NOTE: is `emptyTyParamList` correct?
-        TyCon a b -> TyCon a b
-        TypeVar a b -> TypeVar a b
+        TyLit NoExtField b -> TyLit NoExtField b
+        TyFun NoExtField b c -> TyFun NoExtField (fmap typeOf b) (typeOf c) -- NOTE: is `emptyTyParamList` correct?
+        TyCon NoExtField b -> TyCon NoExtField b
+        TypeVar NoExtField b -> TypeVar NoExtField b
 
 instance TypeOf LamArgTc where
     typeOf (LamArg ty _) = ty

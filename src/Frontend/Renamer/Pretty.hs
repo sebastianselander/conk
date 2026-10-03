@@ -6,7 +6,7 @@ module Frontend.Renamer.Pretty where
 
 import Frontend.Parser.Utils (namespaceSeparator)
 import Frontend.Renamer.Types
-import Frontend.Types
+import Frontend.Types hiding (toList)
 import Names (Ident (..))
 import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty

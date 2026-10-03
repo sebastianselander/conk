@@ -7,7 +7,7 @@ import Backend.Core.Types
 import Backend.Types
 import Data.Text (Text)
 import Names
-import Origin (Origin (Top))
+import Origin (Origin (Function))
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 import Relude hiding (Text, Type)
@@ -90,7 +90,7 @@ pDef (Con index name ty arguments) =
         <> ":"
         <+> pType ty
 pDef (StaticString name ty str) = "const" <+> pretty name <> ":" <+> pType ty <+> "=" <+> pretty str
-pDef (Main exprs) = pDef (Fn Top (Ident "main") [] Unit exprs)
+pDef (Main exprs) = pDef (Fn Function (Ident "main") [] Unit exprs)
 pDef (Fn _ name args typ exprs) =
     concatWith
         (<+>)
