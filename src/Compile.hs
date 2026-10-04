@@ -6,22 +6,37 @@
 
 module Compile where
 
+import Control.Arrow (left)
+import Control.Monad.Except (liftEither)
+import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
+import Data.Foldable1 (foldr1)
+import Data.Text (concat, pack)
+import Data.Text.IO (hPutStrLn)
+import Relude hiding (concat, concatMap, intercalate)
+import System.Directory.Extra (createDirectory, doesDirectoryExist, removeDirectoryRecursive)
+import System.Exit (ExitCode (..))
+import System.FilePath
+    ( dropExtension,
+      replaceDirectory,
+      replaceExtension,
+      splitDirectories,
+      takeBaseName,
+      (</>),
+    )
+import System.Process.Extra (proc, readCreateProcessWithExitCode)
+import Text.Pretty.Simple (pShow)
+
+import Data.Functor qualified as Functor
+import Data.List.NonEmpty qualified as NE
+import Data.Map qualified as Map
+import Data.Set qualified as Set
+
 import Backend.Core.Core (lowerToCore)
 import Backend.Core.Pretty (prettyCore)
 import Backend.Llvm.Llvm (assemble)
 import Backend.Llvm.Lower (llvmOut)
 import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
-import Control.Arrow (left)
-import Control.Monad.Except (liftEither)
-import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
-import Data.Foldable1 (foldr1)
-import Data.Functor qualified as Functor
-import Data.List.NonEmpty qualified as NE
-import Data.Map qualified as Map
-import Data.Set qualified as Set
-import Data.Text (concat, pack)
-import Data.Text.IO (hPutStrLn)
 import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.Parser.Parse (parse)
@@ -35,35 +50,29 @@ import Frontend.Typechecker.Types (ProgramTc, Tc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
 import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
-import Relude hiding (concat, concatMap, intercalate)
-import System.Directory.Extra (createDirectory, doesDirectoryExist, removeDirectoryRecursive)
-import System.Exit (ExitCode (..))
-import System.FilePath
-    ( dropExtension,
-      replaceDirectory,
-      replaceExtension,
-      splitDirectories,
-      takeBaseName,
-      (</>),
-    )
-import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Table (DefTable (..))
-import Text.Pretty.Simple (pShow)
 import Utils (File (name), zipNE)
 
+
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
+
+
 data DebugOutputs = Debugs {debugs :: [DebugOutput], warnings :: [Text]}
+
 
 instance Semigroup DebugOutputs where
     (<>) (Debugs l1 r1) (Debugs l2 r2) = Debugs (l1 <> l2) (r1 <> r2)
+
 
 instance Monoid DebugOutputs where
     mempty = Debugs [] []
     mappend = (<>)
 
+
 log :: (MonadWriter DebugOutputs m) => DebugOutput -> [Text] -> m ()
 log debug warnings = do
     tell (Debugs [debug] warnings)
+
 
 -- TODO(sebsel): Figure out better name
 gatherSymbols :: NonEmpty (File, Program Par) -> Map Ident Namespace
@@ -82,6 +91,7 @@ gatherSymbols =
         DefFn (Fn _ name _ _ _ _) -> Just name
         DefAdt (Adt _ name _) -> Just name
         DefImport _ -> Nothing
+
 
 compile :: NonEmpty File -> ExceptT Text (Writer DebugOutputs) (NonEmpty Ir)
 compile files = do
@@ -130,8 +140,10 @@ compile files = do
             log (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
             pure res
 
+
 runCompile :: NonEmpty File -> (Either Text (NonEmpty Ir), DebugOutputs)
 runCompile = runWriter . runExceptT . compile
+
 
 produceAsmFile :: FilePath -> Either Text Ir -> IO FilePath
 produceAsmFile asmFilename ir = do
@@ -151,6 +163,7 @@ produceAsmFile asmFilename ir = do
             hPutStrLn stderr (pack err)
             exitWith (ExitFailure code)
 
+
 produceObjectFile :: FilePath -> FilePath -> IO FilePath
 produceObjectFile asmFilename objectFilename = do
     let process = proc "as" ["--64", asmFilename, "-o", objectFilename]
@@ -161,6 +174,7 @@ produceObjectFile asmFilename objectFilename = do
             hPutStrLn stderr ("Failed producing object file: " <> pack objectFilename)
             hPutStrLn stderr (pack err)
             exitWith (ExitFailure code)
+
 
 linkObjectFiles :: NonEmpty FilePath -> FilePath -> IO FilePath
 linkObjectFiles files out = do
@@ -178,6 +192,7 @@ linkObjectFiles files out = do
             hPutStrLn stderr ("Failed producing executable: " <> pack out)
             hPutStrLn stderr (pack err)
             exitWith (ExitFailure code)
+
 
 produceExecutable :: (HasCallStack) => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
 produceExecutable dumps files out = do
@@ -204,6 +219,7 @@ produceExecutable dumps files out = do
                     mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
                 linkObjectFiles objFiles (buildDir </> out)
 
+
 showDebug :: Set Pass -> DebugOutput -> Text
 showDebug dumps (Debug phase pretty normal) =
     if Set.member phase dumps
@@ -216,6 +232,7 @@ showDebug dumps (Debug phase pretty normal) =
                 , ""
                 ]
         else ""
+
 
 showDebugs :: Set Pass -> DebugOutputs -> Text
 showDebugs dumps (Debugs debugs warnings) = concat (fmap (showDebug dumps) debugs) <> concat warnings

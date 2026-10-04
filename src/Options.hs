@@ -2,27 +2,33 @@
 
 module Options (cmdlineParser, Options (..), Pass (..)) where
 
-import Data.Set qualified as Set
 import Options.Applicative
 import Options.Applicative.NonEmpty (some1)
 import Relude
 
+import Data.Set qualified as Set
+
+
 data Pass = Parse | Rename | StCheck | TypeCheck | Core | Llvm
-    deriving (Show, Ord, Eq)
+    deriving (Eq, Ord, Show)
+
 
 data Options = Options
     { dumps :: Set Pass
     , filepaths :: NonEmpty FilePath
     }
 
+
 cmdlineParser :: IO Options
 cmdlineParser = execParser (info (options <**> helper) fullDesc)
+
 
 options :: Parser Options
 options = do
     dumps <- pDumps
     filepaths <- pInput
     pure $ Options {dumps, filepaths}
+
 
 pDumps :: Parser (Set Pass)
 pDumps =
@@ -39,6 +45,7 @@ pDumps =
             , flag Nothing (Just Core) (long "dump-core" <> help "Show the output of the core phase")
             , flag Nothing (Just Llvm) (long "dump-llvm" <> help "Dump the generated llvm-ir code")
             ]
+
 
 pInput :: Parser (NonEmpty FilePath)
 pInput = some1 (argument str (metavar "[FILE...]"))

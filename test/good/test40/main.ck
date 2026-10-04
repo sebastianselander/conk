@@ -1,17 +1,15 @@
-type Option<A> {
-    Ok(int),
-    None,
+type Box {
+    Box(int)
+}
+
+def apply<A, B>(f: fn(A) -> B, a: A) -> B {
+    f(a)
 }
 
 def main() {
-    let some_str = Ok("hej");
-    let some_int = Ok(123);
-    match some_str {
-        Ok(x) => printString(x),
-        None => printString("<missing string>")
-    }
-    match some_int {
-        Ok(x) => printInt(x),
-        None => printString("<missing int>")
-    }
+    let boxed = apply(Box, 123);
+    match boxed {
+        Box(n) => std::printInt(n),
+    };
+    std::printChar('\n')
 }

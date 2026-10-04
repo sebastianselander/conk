@@ -4,16 +4,19 @@
 
 module Backend.Llvm.Monad where
 
-import Backend.Llvm.Types
-import Backend.Types
 import Control.Lens (makeLenses)
 import Control.Lens.Getter (use, uses)
 import Control.Lens.Setter (assign, modifying, (+=))
 import Data.DList (DList, snoc)
+import Relude hiding (Type)
+
 import Data.Set qualified as Set
 import Data.Text qualified as Text
+
+import Backend.Llvm.Types
+import Backend.Types
 import Names (Ident (..))
-import Relude hiding (Type)
+
 
 data IRBuilderState = IRBuilderState
     { _instructions :: DList (Named Instruction)
@@ -25,17 +28,23 @@ data IRBuilderState = IRBuilderState
     }
     deriving (Show)
 
+
 newtype IRBuilderCtx = IRBuilderCtx
     { _breakLabel :: Label
     }
+
+
 $(makeLenses ''IRBuilderState)
 $(makeLenses ''IRBuilderCtx)
+
 
 emptyInstructions :: DList (Named Instruction)
 emptyInstructions = mempty
 
+
 entryBlock :: Label
 entryBlock = L (Ident "entry")
+
 
 initialIRBuilderState :: IRBuilderState
 initialIRBuilderState =
@@ -48,11 +57,14 @@ initialIRBuilderState =
         , _predBlock = entryBlock
         }
 
+
 initialIRBuilderCtx :: IRBuilderCtx
 initialIRBuilderCtx = IRBuilderCtx {_breakLabel = entryBlock}
 
+
 newtype IRBuilder a = IRBuilder {runBuilder :: StateT IRBuilderState (Reader IRBuilderCtx) a}
-    deriving (Functor, Applicative, Monad, MonadState IRBuilderState, MonadReader IRBuilderCtx)
+    deriving (Applicative, Functor, Monad, MonadReader IRBuilderCtx, MonadState IRBuilderState)
+
 
 inContext :: IRBuilder a -> IRBuilder (a, [Named Instruction])
 inContext ma = do
@@ -63,14 +75,18 @@ inContext ma = do
     setInstructions (fromList before)
     pure (a, during)
 
+
 clearInstructions :: IRBuilder ()
 clearInstructions = assign instructions emptyInstructions
+
 
 setInstructions :: DList (Named Instruction) -> IRBuilder ()
 setInstructions = assign instructions
 
+
 getInstructions :: IRBuilder [Named Instruction]
 getInstructions = uses instructions toList
+
 
 -- | Get current instruction list, clear it, and then return the gotten list.
 extractInstructions :: IRBuilder [Named Instruction]
@@ -79,11 +95,14 @@ extractInstructions = do
     clearInstructions
     pure instrs
 
+
 runAssembler :: IRBuilder a -> a
 runAssembler = flip runReader initialIRBuilderCtx . flip evalStateT initialIRBuilderState . runBuilder
 
+
 emit :: Named Instruction -> IRBuilder ()
 emit instr = modifying instructions (`snoc` instr)
+
 
 fresh :: (MonadState IRBuilderState m) => m Ident
 fresh = do
@@ -91,29 +110,38 @@ fresh = do
     varCounter += 1
     pure $ Ident ("_" <> show n)
 
+
 call :: Type -> Operand -> [Operand] -> IRBuilder Operand
 call ty function args = LocalReference ty <$> named (Call ty function args)
+
 
 voidCall :: Operand -> [Operand] -> IRBuilder ()
 voidCall function args = emit $ Nameless $ Call Unit function args
 
+
 add :: Type -> Operand -> Operand -> IRBuilder Operand
 add = arith LlvmAdd
+
 
 sub :: Type -> Operand -> Operand -> IRBuilder Operand
 sub = arith LlvmSub
 
+
 mul :: Type -> Operand -> Operand -> IRBuilder Operand
 mul = arith LlvmMul
+
 
 div :: Type -> Operand -> Operand -> IRBuilder Operand
 div = arith LlvmDiv
 
+
 rem :: Type -> Operand -> Operand -> IRBuilder Operand
 rem = arith LlvmRem
 
+
 arith :: ArithOp -> Type -> Operand -> Operand -> IRBuilder Operand
 arith op ty l r = LocalReference ty <$> named (Arith op ty l r)
+
 
 named :: Instruction -> IRBuilder Ident
 named instr = do
@@ -121,40 +149,52 @@ named instr = do
     emit $ Named name instr
     pure name
 
+
 unnamed :: Instruction -> IRBuilder ()
 unnamed instr = emit (Nameless instr)
+
 
 cmp :: CmpOp -> Type -> Operand -> Operand -> IRBuilder Operand
 cmp op ty l r = LocalReference ty <$> named (Cmp op ty l r)
 
+
 eq :: Type -> Operand -> Operand -> IRBuilder Operand
 eq = cmp LlvmEq
+
 
 neq :: Type -> Operand -> Operand -> IRBuilder Operand
 neq = cmp LlvmNeq
 
+
 gt :: Type -> Operand -> Operand -> IRBuilder Operand
 gt = cmp LlvmGt
+
 
 lt :: Type -> Operand -> Operand -> IRBuilder Operand
 lt = cmp LlvmLt
 
+
 ge :: Type -> Operand -> Operand -> IRBuilder Operand
 ge = cmp LlvmGe
+
 
 le :: Type -> Operand -> Operand -> IRBuilder Operand
 le = cmp LlvmLe
 
+
 and :: Type -> Operand -> Operand -> IRBuilder Operand
 and ty l r = LocalReference ty <$> named (And ty l r)
 
+
 or :: Type -> Operand -> Operand -> IRBuilder Operand
 or ty l r = LocalReference ty <$> named (Or ty l r)
+
 
 alloca :: Ident -> Type -> IRBuilder Operand
 alloca name ty = do
     emit $ Named name (Alloca ty)
     pure $ LocalReference (ptr ty) name
+
 
 malloc :: Type -> Operand -> IRBuilder Operand
 malloc ty operand = do
@@ -162,19 +202,24 @@ malloc ty operand = do
     emit $ Named name (Malloc operand)
     pure $ LocalReference ty name
 
+
 store :: Operand -> Operand -> IRBuilder ()
 store lop rop = unnamed (Store lop rop)
+
 
 load :: Type -> Operand -> IRBuilder Operand
 load ty operand = LocalReference ty <$> named (Load operand)
 
+
 ret :: Operand -> IRBuilder ()
 ret operand = unnamed (Ret operand)
+
 
 label :: Label -> IRBuilder ()
 label lbl = do
     assign predBlock lbl
     emit (Nameless $ Label lbl)
+
 
 -- TODO: Fix numbering
 mkLabel :: Text -> IRBuilder Label
@@ -195,30 +240,38 @@ mkLabel desc =
                 go ("." <> show n)
             else modifying labelReserved (Set.insert lbl) >> pure (L lbl)
 
+
 comment :: Text -> IRBuilder ()
 comment cmnt = emit (Nameless (Comment cmnt))
+
 
 br :: Operand -> Label -> Label -> IRBuilder ()
 br operand leftLbl rightLbl = unnamed (Br operand leftLbl rightLbl)
 
+
 jump :: Label -> IRBuilder ()
 jump lbl = unnamed (Jump lbl)
+
 
 -- | Does not work correctly for structure if gep is used nested
 gep :: Operand -> [Operand] -> IRBuilder Operand
 gep op ops = LocalReference (gepType (typeOf op) ops) <$> named (GetElementPtr op ops)
+
 
 extractValue :: Maybe Type -> Operand -> [Word32] -> IRBuilder Operand
 extractValue mbty operand indices =
     LocalReference (fromMaybe (extractValueType (typeOf operand) indices) mbty)
         <$> named (ExtractValue operand indices)
 
+
 phi :: [(Operand, Label)] -> IRBuilder Operand
 phi [] = LocalReference Void <$> named (Phi [])
 phi xs@(i : _) = LocalReference (typeOf (fst i)) <$> named (Phi xs)
 
+
 switch :: Operand -> Label -> [(Constant, Label)] -> IRBuilder ()
 switch op l xs = unnamed (Switch op l xs)
+
 
 gepType :: Type -> [Operand] -> Type
 gepType ty [] = ptr ty
@@ -231,6 +284,7 @@ gepType (StructType _ty) (i : _) = error $ "gep: indices into structures must be
 gepType (TyCon _) _ = OpaquePointer
 gepType ty (_ : _) = error $ "gep: can't index into a " <> show ty
 
+
 extractValueType :: Type -> [Word32] -> Type
 extractValueType ty [] = ty
 extractValueType ty (x : xs) = case ty of
@@ -239,23 +293,30 @@ extractValueType ty (x : xs) = case ty of
         Just ty -> extractValueType ty xs
     ty -> error $ "Extract value: indexing in non-indexable structure" <> show ty
 
+
 global :: Type -> Ident -> Operand
 global ty = ConstantOperand . GlobalReference ty
+
 
 constant :: Constant -> Operand
 constant = ConstantOperand
 
+
 struct :: [Constant] -> Operand
 struct = ConstantOperand . LStruct
+
 
 null :: Type -> Operand
 null ty = ConstantOperand (LNull ty)
 
+
 localRef :: Type -> Ident -> Operand
 localRef = LocalReference
 
+
 blankline :: IRBuilder ()
 blankline = unnamed Blankline
+
 
 undef :: Type -> Operand
 undef = ConstantOperand . Undef

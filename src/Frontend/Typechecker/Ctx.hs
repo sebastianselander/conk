@@ -5,13 +5,14 @@ module Frontend.Typechecker.Ctx where
 import Control.Lens (makeLenses)
 import Control.Lens.Setter (locally)
 import Control.Monad.Reader (MonadReader)
+import Relude (Show)
+
 import Frontend.Renamer.Types (ExprRn, FnRn)
-import Frontend.Typechecker.Types (Tc, TypeTc)
+import Frontend.Typechecker.Types (PolyType, Tc, TypeTc)
 import Frontend.Types (SourceInfo)
 import Names (Names)
-import Relude (Show)
 import Table (DefTable)
-import Frontend.Typechecker.Polytype (PolyType)
+
 
 data Ctx = Ctx
     { _defTable :: DefTable Tc (PolyType Tc) SourceInfo
@@ -22,7 +23,9 @@ data Ctx = Ctx
     }
     deriving (Show)
 
+
 $(makeLenses ''Ctx)
+
 
 push :: (MonadReader Ctx m) => ExprRn -> m a -> m a
 push expr = locally exprStack (expr :)

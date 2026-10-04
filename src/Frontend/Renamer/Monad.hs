@@ -35,21 +35,25 @@ module Frontend.Renamer.Monad
       namespaces,
       doesNamespaceExist,
       userDefinedTypes,
-    ) where
+    )
+where
 
 import Control.Lens hiding ((<|))
 import Control.Monad.Validate (MonadValidate, Validate, runValidate)
 import Data.List.NonEmpty
 import Data.Map.Strict (Map)
+import Relude hiding (Map, head)
+
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+
 import Frontend.Builtin (Builtins, isBuiltin)
 import Frontend.Error
 import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Typechecker.Types (Tc)
 import Frontend.Types (SourceInfo)
 import Names (Ident (..), Namespace)
-import Relude hiding (Map, head)
+
 
 data Env = Env
     { _newToOld :: Map Ident Ident
@@ -62,6 +66,7 @@ data Env = Env
     }
     deriving (Show)
 
+
 data Ctx = Ctx
     { _freeVarsAllowed :: Bool
     , _localDefinitions :: Set Ident
@@ -73,18 +78,21 @@ data Ctx = Ctx
     }
     deriving (Show)
 
+
 $(makeLenses ''Env)
 $(makeLenses ''Ctx)
 
+
 newtype Gen a = Gen {runGen' :: StateT Env (ReaderT Ctx (Validate [RnError])) a}
     deriving
-        ( Functor
-        , Applicative
+        ( Applicative
+        , Functor
         , Monad
-        , MonadState Env
         , MonadReader Ctx
+        , MonadState Env
         , MonadValidate [RnError]
         )
+
 
 emptyEnv :: Map Ident Namespace -> Env
 emptyEnv imported =
@@ -98,6 +106,7 @@ emptyEnv imported =
         , _importName = mempty
         }
 
+
 createCtx ::
     Namespace ->
     Builtins Tc ->
@@ -107,6 +116,7 @@ createCtx ::
     Ctx
 createCtx = Ctx True mempty
 
+
 runGen :: Env -> Ctx -> Gen a -> Either [RnError] a
 runGen env ctx =
     runValidate
@@ -114,12 +124,15 @@ runGen env ctx =
         . flip evalStateT env
         . runGen'
 
+
 names :: Gen (Map Ident Ident)
 names = use newToOld
+
 
 -- TODO: Does not check for imported symbols
 boundFun :: (MonadReader Ctx m) => Ident -> m (Maybe Ident)
 boundFun name = views localDefinitions (bool Nothing (Just name) . Set.member name)
+
 
 -- | Returns the expanded namespace of the symbol
 boundImported ::
@@ -130,8 +143,10 @@ boundImported namespaceToExlucde name = do
         Just namespace | namespace /= namespaceToExlucde -> pure (Just (Imported, namespace, name))
         _ -> pure Nothing
 
+
 boundCons :: (MonadState Env m) => Ident -> m (Maybe (Namespace, Ident))
 boundCons name = uses constructors (fmap (,name) . Map.lookup name)
+
 
 boundArg ::
     (MonadState Env m, MonadReader Ctx m) => Ident -> m (Maybe (Boundedness, (Namespace, Ident)))
@@ -147,6 +162,7 @@ boundArg name = do
         Just info -> pure info
         Nothing -> findArg name xs
 
+
 lookupBuiltin :: (MonadReader Ctx m) => Namespace -> Ident -> m (Maybe (Namespace, Ident))
 lookupBuiltin namespace name = do
     map <- view builtins
@@ -154,8 +170,10 @@ lookupBuiltin namespace name = do
         then pure (Just (namespace, name))
         else pure Nothing
 
+
 doesNamespaceExist :: (MonadReader Ctx m) => Namespace -> m Bool
 doesNamespaceExist namespace = views namespaces (Set.member namespace)
+
 
 {-| Checks if a variable is bound in the closest scope
   | It does *not* check if a variable is completely unbound
@@ -175,6 +193,7 @@ boundVar name = do
         Just name' -> pure name'
         Nothing -> findVar name xs
 
+
 -- | Insert and rename a variable into the outermost scope
 insertVar :: (MonadState Env m) => Ident -> m Ident
 insertVar name@(Ident nm) = do
@@ -188,6 +207,7 @@ insertVar name@(Ident nm) = do
     modifying numbering (Map.insert name n)
     pure name'
 
+
 insertArg :: (MonadState Env m) => Namespace -> Ident -> m (Namespace, Ident)
 insertArg namespace name@(Ident nm) = do
     numb <- use numbering
@@ -200,11 +220,14 @@ insertArg namespace name@(Ident nm) = do
     assign arguments args
     pure (namespace, name')
 
+
 insertImportName :: (MonadState Env m) => Ident -> Namespace -> m ()
 insertImportName name path = modifying importName (Map.insert name path)
 
+
 resetArgs :: (MonadState Env m) => m ()
 resetArgs = assign arguments (mempty :| [])
+
 
 checkAndinsertConstrutor ::
     (MonadValidate [RnError] m, MonadState Env m, MonadReader Ctx m) => SourceInfo -> Ident -> m ()
@@ -215,6 +238,7 @@ checkAndinsertConstrutor loc name = do
             namespace <- view namespace
             -- FIXME: This might be incorrect
             modifying constructors (Map.insert name namespace)
+
 
 newContext :: Gen a -> Gen a
 newContext rn = do

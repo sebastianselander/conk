@@ -4,15 +4,19 @@
 
 module Frontend.Parser.Pretty where
 
+import Prettyprinter (Doc, Pretty (pretty), (<+>))
+import Relude hiding (intercalate)
+
+import Prettyprinter qualified as Pretty
+
 import Frontend.Parser.Types
 import Frontend.Types hiding (toList)
 import Names (Ident (..))
-import Prettyprinter (Doc, Pretty (pretty), (<+>))
-import Prettyprinter qualified as Pretty
-import Relude hiding (intercalate)
+
 
 prettyRenamer :: (Pretty a) => a -> Text
 prettyRenamer = show . Pretty.pretty
+
 
 instance Pretty ProgramPar where
     pretty (Program _ defs) =
@@ -20,10 +24,12 @@ instance Pretty ProgramPar where
             (Pretty.surround (Pretty.hardline <> Pretty.hardline))
             (fmap Pretty.pretty defs)
 
+
 instance Pretty DefPar where
     pretty (DefFn fn) = Pretty.pretty fn
     pretty (DefAdt adt) = Pretty.pretty adt
     pretty (DefImport imp) = Pretty.pretty imp
+
 
 instance Pretty ImportPar where
     pretty (ImportExplicit _ namespace imports) =
@@ -33,9 +39,11 @@ instance Pretty ImportPar where
                 (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap pretty imports))
     pretty (XImport extraImports) = pretty extraImports
 
+
 instance (Show a) => Pretty (ExtraImports a) where
     pretty (ImportAs namespace name _a) = "import" <+> Pretty.pretty namespace <+> "as" <+> Pretty.pretty name
     pretty (ImportQualified namespace _a) = "import" <+> Pretty.pretty namespace
+
 
 instance Pretty AdtPar where
     pretty (Adt _ name cons) =
@@ -52,6 +60,7 @@ instance Pretty AdtPar where
                     <> Pretty.hardline
                 )
 
+
 instance Pretty ConstructorPar where
     pretty = \case
         EnumCons _ name -> Pretty.pretty name
@@ -63,11 +72,13 @@ instance Pretty ConstructorPar where
                         (fmap Pretty.pretty types)
                     )
 
+
 instance Pretty TyParamList where
     pretty (Params _ []) = ""
     pretty (Params _ xs) =
         Pretty.angles
             $ Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (Pretty.pretty <$> toList xs)
+
 
 instance Pretty FnPar where
     pretty (Fn _ (Ident name) tyParams args ty block) =
@@ -83,6 +94,7 @@ instance Pretty FnPar where
             <+> Pretty.pretty ty
             <+> Pretty.pretty block
 
+
 instance Pretty BlockPar where
     pretty (Block _ stmts tail) =
         Pretty.braces
@@ -97,17 +109,22 @@ instance Pretty BlockPar where
                 <> Pretty.hardline
             )
 
+
 instance Pretty DataConCantHappen where
     pretty _ = error "absurd"
+
 
 instance Pretty StmtPar where
     pretty (SExpr NoExtField expr) = Pretty.pretty expr <> Pretty.semi
 
+
 instance Pretty ArgPar where
     pretty (Arg _ name ty) = Pretty.pretty name <> ":" <+> Pretty.pretty ty
 
+
 instance Pretty TypePar where
     pretty = prettyType1
+
 
 prettyType1 :: TypePar -> Doc ann
 prettyType1 (TyFun _ l r) =
@@ -115,6 +132,7 @@ prettyType1 (TyFun _ l r) =
         <+> "->"
         <+> Pretty.pretty r
 prettyType1 ty = prettyType2 ty
+
 
 prettyType2 :: TypePar -> Doc ann
 prettyType2 = \case
@@ -129,21 +147,26 @@ prettyType2 = \case
     ty@TyFun {} -> Pretty.parens (Pretty.pretty ty)
     TypeVar _ tyvar -> Pretty.pretty tyvar
 
+
 instance Pretty ExprPar where
     pretty = prettyExpr1
+
 
 prettyExpr1 :: ExprPar -> Doc ann
 prettyExpr1 (BinOp _ l Or r) = Pretty.pretty l <+> "||" <+> Pretty.pretty r
 prettyExpr1 e = prettyExpr2 e
 
+
 prettyExpr2 :: ExprPar -> Doc ann
 prettyExpr2 (BinOp _ l And r) = Pretty.pretty l <+> "&&" <+> Pretty.pretty r
 prettyExpr2 e = prettyExpr3 e
+
 
 prettyExpr3 :: ExprPar -> Doc ann
 prettyExpr3 (BinOp _ l Eq r) = Pretty.pretty l <+> "==" <+> Pretty.pretty r
 prettyExpr3 (BinOp _ l Neq r) = Pretty.pretty l <+> "!=" <+> Pretty.pretty r
 prettyExpr3 e = prettyExpr4 e
+
 
 prettyExpr4 :: ExprPar -> Doc ann
 prettyExpr4 (BinOp _ l Lt r) = Pretty.pretty l <+> "<" <+> Pretty.pretty r
@@ -152,10 +175,12 @@ prettyExpr4 (BinOp _ l Gt r) = Pretty.pretty l <+> ">" <+> Pretty.pretty r
 prettyExpr4 (BinOp _ l Gte r) = Pretty.pretty l <+> ">=" <+> Pretty.pretty r
 prettyExpr4 e = prettyExpr5 e
 
+
 prettyExpr5 :: ExprPar -> Doc ann
 prettyExpr5 (BinOp _ l Add r) = Pretty.pretty l <+> "+" <+> Pretty.pretty r
 prettyExpr5 (BinOp _ l Sub r) = Pretty.pretty l <+> "-" <+> Pretty.pretty r
 prettyExpr5 e = prettyExpr6 e
+
 
 prettyExpr6 :: ExprPar -> Doc ann
 prettyExpr6 (BinOp _ l Mod r) = Pretty.pretty l <+> "%" <+> Pretty.pretty r
@@ -164,6 +189,7 @@ prettyExpr6 (BinOp _ l Mul r) = Pretty.pretty l <+> "*" <+> Pretty.pretty r
 prettyExpr6 (Prefix _ Not r) = "!" <+> Pretty.pretty r
 prettyExpr6 (Prefix _ Neg r) = "-" <+> Pretty.pretty r
 prettyExpr6 e = prettyExpr7 e
+
 
 prettyExpr7 :: ExprPar -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
@@ -204,8 +230,10 @@ prettyExpr7 (Match _ scrutinee arms) =
                 <> Pretty.hardline
             )
 
+
 instance Pretty MatchArmPar where
     pretty (MatchArm _ pat expr) = Pretty.pretty pat <+> "=>" <+> Pretty.pretty expr
+
 
 instance Pretty PatternPar where
     pretty = \case
@@ -219,11 +247,13 @@ instance Pretty PatternPar where
                         (fmap Pretty.pretty pats)
                     )
 
+
 instance Pretty LamArgPar where
     pretty (LamArg (_, Nothing) name) =
         Pretty.pretty name
     pretty (LamArg (_, Just ty) name) =
         Pretty.parens $ pretty name <> ":" <+> Pretty.pretty ty
+
 
 instance Pretty LitPar where
     pretty lit = case lit of
@@ -234,6 +264,7 @@ instance Pretty LitPar where
         BoolLit _ True -> "true"
         BoolLit _ False -> "false"
         UnitLit _ -> "()"
+
 
 --
 -- tcPrettyStmt :: StmtPar -> Doc ann

@@ -13,6 +13,8 @@ comma-style: leading
 # Styling of import/export lists (choices: leading, trailing, or diff-friendly)
 import-export-style: trailing
 
+import-grouping: by-scope-then-qualified
+
 # Whether to full-indent or half-indent 'where' bindings past the preceding body
 indent-wheres: false
 
@@ -20,7 +22,7 @@ indent-wheres: false
 record-brace-space: true
 
 # Number of spaces between top-level declarations
-newlines-between-decls: 1
+newlines-between-decls: 2
 
 # How to print Haddock comments (choices: single-line, multi-line, or multi-line-compact)
 haddock-style: multi-line-compact
@@ -41,7 +43,7 @@ single-constraint-parens: always
 unicode: never
 
 # Give the programmer more choice on where to insert blank lines
-respectful: true
+respectful: false
 
 # Fixity information for operators
 fixities: []
@@ -49,4 +51,6 @@ fixities: []
 # Module reexports Fourmolu should know about
 reexports: []
 
-
+sort-constraint-parens: true
+sort-derived-classes: true
+sort-deriving-clauses: true

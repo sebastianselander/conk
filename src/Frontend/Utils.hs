@@ -1,7 +1,9 @@
 module Frontend.Utils where
 
-import Frontend.Types (SourceInfo, TyParamList (..), TyVar)
 import Relude
+
+import Frontend.Types (SourceInfo, TyParamList (..), TyVar)
+
 
 isUnique :: TyParamList -> Maybe (SourceInfo, TyVar)
 isUnique (Params _ []) = Nothing

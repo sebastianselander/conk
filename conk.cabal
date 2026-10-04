@@ -57,12 +57,14 @@ library
     Frontend.Renamer.Types
     Frontend.StatementCheck
     Frontend.Tc
+    Frontend.Tc2
     Frontend.TH
     Frontend.Phase
     Frontend.Typechecker.Ctx
     Frontend.Typechecker.Pretty
     Frontend.Typechecker.Types
     Frontend.Typechecker.Polytype
+    Frontend.Typechecker.Unify
     Frontend.Types
     Frontend.Substitution
     Names

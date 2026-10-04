@@ -1,18 +1,31 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use camelCase" #-}
 
 module Frontend.Typechecker.Polytype where
 
+import Data.Text (pack)
+import Relude hiding (Any, Type, toList)
+
 import Data.Map qualified as Map
-import Frontend.Typechecker.Types (MetaTy (..), Tc)
-import Frontend.Types (Forall, NoExtField (NoExtField), TyVar (TyVar), Type (..))
-import Relude hiding (Type, toList)
+import Data.Set qualified as Set
 
-data PolyType a = PolyType [TyVar] (Type a)
+import Frontend.Substitution (Substitution (..), apply)
+import Frontend.Typechecker.Types
+    ( MetaTy (..),
+      MonoType,
+      PolyType (PolyType),
+      Tc,
+      pattern Monotype,
+    )
+import Frontend.Types (NoExtField (NoExtField), TyVar (TyVar), Type (..))
+import Names (Ident (Ident))
 
-deriving instance (Forall Show a) => Show (PolyType a)
 
-instantiate :: PolyType Tc -> Type Tc
-instantiate (PolyType typevars ty) =
+instantiate :: Int -> PolyType Tc -> (Type Tc, Int)
+instantiate n (PolyType typevars ty) =
     let replaceTyVars :: Map TyVar (Type Tc) -> Type Tc -> Type Tc
         replaceTyVars tbl = \case
             TyLit NoExtField lit -> TyLit NoExtField lit
@@ -20,22 +33,58 @@ instantiate (PolyType typevars ty) =
             TyCon NoExtField name -> TyCon NoExtField name
             t@(TypeVar NoExtField tyvar) -> fromMaybe t (Map.lookup tyvar tbl)
             Type meta -> Type meta
-        tvars_to_replace = Map.fromList $ zipWith (\ty n -> (ty, Type (MonoType n))) typevars [1 ..]
-     in replaceTyVars tvars_to_replace ty
+        tvars_to_replace = Map.fromList $ zipWith (\ty n -> (ty, Monotype n)) typevars [n ..]
+     in (replaceTyVars tvars_to_replace ty, n + Map.size tvars_to_replace)
 
-occurs :: Int -> Type Tc -> Bool
-occurs n ty = case ty of
+
+occurs :: MonoType -> Type Tc -> Bool
+occurs mono ty = case ty of
     TyLit NoExtField _ -> False
     TyCon NoExtField _ -> False
     TypeVar NoExtField _ -> False
-    TyFun NoExtField args ret -> any (occurs n) args || occurs n ret
-    Type (MonoType m) -> n == m
+    TyFun NoExtField args ret -> any (occurs mono) args || occurs mono ret
+    Type (Mono m) -> mono == m
     Type AnyX -> False
 
-test :: Type Tc
-test =
-    instantiate
-        ( PolyType
-            [TyVar "a", TyVar "b"]
-            (TyFun NoExtField [TypeVar NoExtField (TyVar "a")] (TypeVar NoExtField (TyVar "a")))
-        )
+
+generalize :: Type Tc -> (PolyType Tc, Substitution Tc)
+generalize ty =
+    let (monos, tvars) = find_all_monotypes ty
+        generalized_tvars = TyVar <$> tvar_names tvars
+        table = zip (Set.toList monos) generalized_tvars
+        subst = Subst $ Map.fromList [(k, TypeVar NoExtField v) | (k, v) <- table]
+     in (PolyType (fmap snd table) $ apply subst ty, subst)
+  where
+    find_all_monotypes :: Type Tc -> (Set MonoType, Set Ident)
+    find_all_monotypes ty = case ty of
+        TyFun NoExtField args ret ->
+            let (monos, tvars) = foldr f (mempty, mempty) args
+                (mono, tvar) = find_all_monotypes ret
+             in (mono <> monos, tvar <> tvars)
+        Type (Mono m) -> (Set.singleton m, mempty)
+        TyLit NoExtField _ -> (mempty, mempty)
+        TyCon NoExtField _ -> (mempty, mempty)
+        TypeVar NoExtField _ -> (mempty, mempty)
+        Type AnyX -> (mempty, mempty)
+      where
+        f t (monos, tvars) =
+            let (monos2, tvars2) = find_all_monotypes t
+             in (monos <> monos2, tvars <> tvars2)
+
+
+tvar_names :: Set Ident -> [Ident]
+tvar_names exclude =
+    filter (`Set.notMember` exclude)
+        $ fmap (Ident . pack)
+        $ [1 ..]
+        >>= flip replicateM ['A' .. 'Z']
+
+
+{- ===== Testing ====== -}
+
+tyvar :: Text -> Type Tc
+tyvar name = TypeVar NoExtField (TyVar $ Ident name)
+
+
+ty :: PolyType Tc
+ty = PolyType [TyVar "a"] $ TyFun NoExtField [tyvar "b", tyvar "a"] (tyvar "a")

@@ -3,20 +3,24 @@
 
 module Backend.Llvm.Llvm where
 
-import Backend.Core.Types qualified as Core
+import Control.Lens.Getter (use, view)
+import Control.Lens.Setter (locally)
+import Control.Monad.Extra (concatMapM)
+import Data.Tuple.Extra (fst3)
+import Relude hiding (Type, and, div, exitFailure, null, or, rem)
+
+import Data.List.NonEmpty qualified as NonEmpty
+
 import Backend.Llvm.Monad
 import Backend.Llvm.Prelude (exitFailure, printString)
 import Backend.Llvm.Types
 import Backend.Types
-import Control.Lens.Getter (use, view)
-import Control.Lens.Setter (locally)
-import Control.Monad.Extra (concatMapM)
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Tuple.Extra (fst3)
 import Names (Ident (..))
 import Origin (Origin (..))
-import Relude hiding (Type, and, div, exitFailure, null, or, rem)
 import Utils (catMaybesSnd, mapWithIndexM)
+
+import Backend.Core.Types qualified as Core
+
 
 assemble :: Core.Program -> Ir
 assemble (Core.Program defs) =
@@ -24,6 +28,7 @@ assemble (Core.Program defs) =
         . sortBy (comparing Down)
         <$> runAssembler
         $ concatMapM assembleDecl defs
+
 
 assembleDecl :: Core.Def -> IRBuilder [Decl]
 assembleDecl (Core.Decl _namespace ty name args) = pure [Declare ty name args NoEllipsis]
@@ -41,6 +46,7 @@ assembleDecl (Core.TypeSyn name ty) = pure [TypeDefinition name ty]
 assembleDecl (Core.Con index name ty tyArgs) = do
     clearInstructions
     assembleCon index name ty tyArgs
+
 
 assembleCon :: Int -> Ident -> Type -> Maybe [Type] -> IRBuilder [Decl]
 assembleCon index name ty = \case
@@ -80,6 +86,7 @@ assembleCon index name ty = \case
             , Define Function name [] ty [Nameless $ Ret $ global ty constructorFun]
             ]
 
+
 assembleArg :: Core.Arg -> IRBuilder Operand
 assembleArg (Core.EnvArg ty) = pure $ LocalReference ty (Ident "env")
 assembleArg (Core.Arg name ty) = do
@@ -88,8 +95,10 @@ assembleArg (Core.Arg name ty) = do
     store arg fakeArg
     pure arg
 
+
 mkArgName :: Ident -> Ident
 mkArgName (Ident name) = Ident $ name <> ".arg"
+
 
 assembleExpr :: Core.TyExpr -> IRBuilder Operand
 assembleExpr (Core.Typed taggedType expr) =
@@ -293,6 +302,7 @@ indexOf :: Core.Pattern -> Integer
 indexOf = \case
     Core.PCon n _ -> fromIntegral n
 
+
 assembleLit :: (Monad m) => Core.Constant -> m Operand
 assembleLit = \case
     Core.IntLit int -> pure $ ConstantOperand (LInt Int64 int)
@@ -302,8 +312,10 @@ assembleLit = \case
     Core.UnitLit -> pure $ ConstantOperand LUnit
     Core.NullLit -> pure $ ConstantOperand (LNull (PointerType Void))
 
+
 unit :: (Monad m) => m Operand
 unit = pure $ ConstantOperand LUnit
+
 
 llvmBinOp :: Core.BinOp -> (Type -> Operand -> Operand -> IRBuilder Operand)
 llvmBinOp op = case op of
@@ -321,6 +333,7 @@ llvmBinOp op = case op of
     Core.Eq -> eq
     Core.Neq -> neq
 
+
 llvmLit :: Type -> Core.Constant -> Constant
 llvmLit ty = \case
     Core.IntLit int -> LInt ty int
@@ -330,15 +343,19 @@ llvmLit ty = \case
     Core.UnitLit -> LUnit
     Core.NullLit -> LNull ty
 
+
 i32 :: (Integral a) => a -> Operand
 i32 = ConstantOperand . LInt Int32 . fromIntegral
+
 
 i64 :: (Integral a) => a -> Operand
 i64 = ConstantOperand . LInt Int64 . fromIntegral
 
+
 derefType :: Type -> Type
 derefType (PointerType ty) = ty
 derefType ty = error $ "Can not deref non-concrete pointer type `" <> show ty <> "`"
+
 
 getReturnType :: Type -> Type
 getReturnType = \case

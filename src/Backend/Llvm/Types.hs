@@ -2,21 +2,26 @@
 
 module Backend.Llvm.Types where
 
-import Backend.Types (Type (..))
 import Data.Data (Data)
+import Relude hiding (Type)
+
+import Backend.Types (Type (..))
 import Names (Ident)
 import Origin
-import Relude hiding (Type)
+
 
 data Ir = IrMain {_decls :: [Decl]} | IrLib {_decls :: [Decl]}
     deriving (Show)
+
 
 updateDecls :: ([Decl] -> [Decl]) -> Ir -> Ir
 updateDecls f (IrMain decls) = IrMain (f decls)
 updateDecls f (IrLib decls) = IrLib (f decls)
 
+
 data Ellipsis = Ellipsis | NoEllipsis
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 -- These are declared in the order we want them defined in the ir file
 data Decl
@@ -29,21 +34,26 @@ data Decl
         Ident -- name
         [Type] -- argument types
         !Ellipsis -- varargs?
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data Operand
     = LocalReference !Type !Ident
     | ConstantOperand !Constant
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data ArithOp = LlvmAdd | LlvmSub | LlvmMul | LlvmDiv | LlvmRem
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data CmpOp = LlvmEq | LlvmNeq | LlvmGt | LlvmLt | LlvmGe | LlvmLe
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 newtype Label = L Ident
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data Instruction
     = Call !Type !Operand [Operand]
@@ -66,7 +76,8 @@ data Instruction
     | Switch !Operand Label [(Constant, Label)]
     | Blankline
     | Unreachable
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data Constant
     = LInt !Type !Integer
@@ -78,18 +89,22 @@ data Constant
     | LStruct [Constant]
     | Undef !Type
     | GlobalReference !Type !Ident
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
+
 
 data Named a = Named Ident a | Nameless a
-    deriving (Show, Functor, Traversable, Foldable, Generic, Data, Ord, Eq)
+    deriving (Data, Eq, Foldable, Functor, Generic, Ord, Show, Traversable)
+
 
 class Typed a where
     typeOf :: a -> Type
+
 
 instance Typed Operand where
     typeOf = \case
         LocalReference ty _ -> ty
         ConstantOperand constant -> typeOf constant
+
 
 instance Typed Constant where
     typeOf = \case

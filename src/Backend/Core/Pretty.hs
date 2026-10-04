@@ -3,17 +3,20 @@
 
 module Backend.Core.Pretty where
 
-import Backend.Core.Types
-import Backend.Types
 import Data.Text (Text)
-import Names
-import Origin (Origin (Function))
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 import Relude hiding (Text, Type)
 
+import Backend.Core.Types
+import Backend.Types
+import Names
+import Origin (Origin (Function))
+
+
 prettyCore :: Program -> Text
 prettyCore = renderStrict . layoutPretty defaultLayoutOptions . pProgram
+
 
 pType :: Type -> Doc ann
 pType = \case
@@ -39,6 +42,7 @@ pType = \case
             , pType ret
             ]
 
+
 pLit :: Constant -> Doc ann
 pLit = \case
     IntLit lit -> show lit
@@ -48,6 +52,7 @@ pLit = \case
     BoolLit False -> "false"
     UnitLit -> "()"
     NullLit -> "null"
+
 
 pBinOp :: BinOp -> Doc ann
 pBinOp = \case
@@ -65,13 +70,16 @@ pBinOp = \case
     Eq -> "=="
     Neq -> "!="
 
+
 pPrefixOp :: PrefixOp -> Doc ann
 pPrefixOp = \case
     Not -> "!"
     Neg -> "-"
 
+
 pProgram :: Program -> Doc ann
 pProgram (Program defs) = hcat (punctuate (hardline <> hardline) (fmap pDef defs))
+
 
 pDef :: Def -> Doc ann
 pDef (Decl namespace ty name tys) =
@@ -106,12 +114,15 @@ pDef (Fn _ name args typ exprs) =
         ]
         <> "}"
 
+
 pIdent :: Ident -> Doc ann
 pIdent (Ident name) = pretty name
+
 
 pArg :: Arg -> Doc ann
 pArg (EnvArg ty) = "env:" <+> pType ty
 pArg (Arg name ty) = pIdent name <> ":" <+> pType ty
+
 
 pExpr :: TyExpr -> Doc ann
 pExpr (Typed _ expr) = go expr
@@ -167,11 +178,14 @@ pExpr (Typed _ expr) = go expr
                 <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
         ToStderrExit txt -> "exit: " <> pretty txt
 
+
 pCatch :: Catch -> Doc ann
 pCatch (Catch name expr) = pretty name <+> "=>" <+> concatWith (surround (semi <> hardline)) (fmap pExpr (toList expr))
 
+
 prettyArms :: [MatchArm] -> Doc ann
 prettyArms = concatWith (surround hardline) . fmap prettyArm
+
 
 prettyArm :: MatchArm -> Doc ann
 prettyArm (MatchArm pat body) = case body of
@@ -182,8 +196,10 @@ prettyArm (MatchArm pat body) = case body of
             <+> braces
                 (hardline <> indent 4 (concatWith (surround (semi <> hardline)) (fmap pExpr (x : xs))) <> hardline)
 
+
 prettyShowPat :: Pattern -> Text
 prettyShowPat = renderStrict . layoutPretty defaultLayoutOptions . prettyPat
+
 
 prettyPat :: Pattern -> Doc ann
 prettyPat = \case

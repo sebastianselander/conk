@@ -7,16 +7,13 @@ def id<A>(x: A) -> A {
 }
 
 def main() {
-    // let f = id;
-    // let two = f(2);
-    // let o = id('o');
+    let f = id;
+    let two = f(69);
+    let o = id('o');
     let hej = apply(id,"hej\n");
-    // let unit = apply(f, ());
-    // std::printInt(two);
-    // std::printChar(o);
-    // std::printString(hej);
-    // match unit {
-    //     a => std::printString("()\n")
-    // }
+    let unit = apply(f, ());
+    std::printInt(two);
+    std::printChar(o);
+    std::printString(hej);
 }
 

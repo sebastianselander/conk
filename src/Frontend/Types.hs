@@ -7,57 +7,73 @@
 module Frontend.Types where
 
 import Data.Data (Data)
-import Data.Kind qualified
-import Data.Map qualified as Map
 import Data.Tuple.Extra (both)
-import Frontend.Phase (Phase (..))
 import GHC.Show (show)
-import Names
 import Prettyprinter (Pretty (pretty))
 import Relude hiding (Type, concat, intercalate, replicate)
-import Relude qualified
 import Text.Megaparsec (Pos, mkPos)
 import Text.Megaparsec.Pos (unPos)
 
+import Data.Kind qualified
+import Data.Map qualified as Map
+import Relude qualified
+
+import Frontend.Phase (Phase (..))
+import Names
+
+
 type HaskellType = Data.Kind.Type
 
+
 data NoExtField = NoExtField
-    deriving (Show, Eq, Ord, Data, Generic)
+    deriving (Data, Eq, Generic, Ord, Show)
+
 
 data DataConCantHappen
-    deriving (Show, Eq, Ord, Data, Generic)
+    deriving (Data, Eq, Generic, Ord, Show)
+
 
 data Span = Span
     { start :: !(Pos, Pos)
     , end :: !(Pos, Pos)
     }
-    deriving (Eq, Ord, Data)
+    deriving (Data, Eq, Ord)
+
 
 emptyInfo :: SourceInfo
 emptyInfo = SourceInfo {sourceFile = "", spanInfo = emptySpan}
 
+
 emptySpan :: Span
 emptySpan = Span (mkPos 1, mkPos 1) (mkPos 1, mkPos 1)
+
 
 instance Show Span where
     show Span {start, end} =
         let (bl, bc) = both (Relude.show . unPos) start
          in Relude.concat [bl, ":", bc]
 
+
 data SourceInfo = SourceInfo
     { spanInfo :: !Span
     , sourceFile :: !FilePath
     }
-    deriving (Eq, Ord, Data)
+    deriving (Data, Eq, Ord)
+
 
 instance Show SourceInfo where
     show info = info.sourceFile <> ":" <> Relude.show info.spanInfo
 
+
 -- Program
 data Program a = Program !(XProgram a) [Def a]
+
+
 type family XProgram a
 
+
 deriving instance (Forall Show a) => Show (Program a)
+
 
 -- Definition
 data Def a
@@ -65,84 +81,129 @@ data Def a
     | DefAdt (Adt a)
     | DefFn (Fn a)
     | DefX !(XDef a)
+
+
 type family XDef a
+
+
 deriving instance (Forall Show a) => Show (Def a)
+
 
 {-|
 We don't know if type `A` is a type parameter or a concrete type when
 parsing so we use this type as a placeholder and resolve it during renaming
 -}
 data UnresolvedType = UnresolvedType SourceInfo TyVar
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 data TyParamList = Params SourceInfo [TyVar]
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 emptyTyParamList :: TyParamList
 emptyTyParamList = Params emptyInfo []
 
+
 member :: TyVar -> TyParamList -> Bool
 member tyvar (Params _ xs) = tyvar `elem` xs
+
 
 toList :: TyParamList -> [TyVar]
 toList (Params _ xs) = xs
 
+
 toMap :: TyParamList -> Map TyVar (Maybe (Type a))
 toMap (Params _ xs) = Map.fromList (fmap (,Nothing) xs)
+
 
 pop :: TyVar -> TyParamList -> (TyParamList, Maybe TyVar)
 pop tyvar (Params loc xs) = case break (== tyvar) xs of
     (fs, []) -> (Params loc fs, Nothing)
     (fs, x : xs) -> (Params loc (fs <> xs), Just x)
 
+
 nameOf :: UnresolvedType -> Ident
 nameOf (UnresolvedType _ (TyVar name)) = name
+
 
 tyVarOf :: UnresolvedType -> TyVar
 tyVarOf (UnresolvedType _ tyVar) = tyVar
 
+
 isTypeVar :: UnresolvedType -> TyParamList -> Bool
 isTypeVar (UnresolvedType _ unresolved) (Params _loc vars) = unresolved `elem` vars
 
+
 data Fn a = Fn !(XFn a) Ident TyParamList [Arg a] (Type a) (Block a)
+
+
 type family XFn a
 
+
 deriving instance (Forall Show a) => Show (Fn a)
+
 
 data Import a
     = ImportExplicit !(XImportExplicit a) Namespace [Ident] -- import foo (bar, baz)
     | XImport !(XImport a)
+
+
 type family XImport a
+
+
 type family XImportExplicit a
+
+
 deriving instance (Forall Show a) => Show (Import a)
 
+
 data Adt a = Adt !(XAdt a) Ident [Constructor a]
+
+
 type family XAdt a
+
+
 deriving instance (Forall Show a) => Show (Adt a)
+
 
 data Constructor a
     = EnumCons (XEnumCons a) Ident
     | FunCons (XFunCons a) Ident [Type a]
     | ConstructorX !(XConstructor a)
 
+
 type family XConstructor a
+
+
 type family XEnumCons a
+
+
 type family XFunCons a
+
+
 deriving instance (Forall Show a) => Show (Constructor a)
+
 
 -- Argument
 data Arg a = Arg !(XArg a) Ident (Type a)
+
+
 type family XArg a
 
+
 deriving instance (Forall Show a) => Show (Arg a)
+
 
 -- Type
 
 newtype TyVar = TyVar Ident
-    deriving (Eq, Ord, Show, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 instance Pretty TyVar where
     pretty (TyVar ident) = pretty ident
+
 
 data Type a
     = TyLit !(XTyLit a) TyLit
@@ -150,6 +211,7 @@ data Type a
     | TyCon !(XTyCon a) Ident
     | TypeVar !(XTypeVar a) TyVar
     | Type !(XType a)
+
 
 (~~) :: Type a -> Type a -> Bool
 l ~~ r = case (l, r) of
@@ -159,13 +221,24 @@ l ~~ r = case (l, r) of
     (TypeVar _ left, TypeVar _ right) -> left == right
     _ -> False
 
+
 type family XTyLit a
+
+
 type family XTyFun a
+
+
 type family XType a
+
+
 type family XTyCon a
+
+
 type family XTypeVar a
 
+
 deriving instance (Forall Show a) => Show (Type a)
+
 
 coerceType ::
     ( XTyLit t1 ~ XTyLit t2
@@ -183,20 +256,31 @@ coerceType ty = case ty of
     Type a -> Type a
     TypeVar a b -> TypeVar a b
 
+
 data TyLit = Unit | String | Int | Double | Char | Bool
-    deriving (Show, Eq, Ord, Enum, Data)
+    deriving (Data, Enum, Eq, Ord, Show)
+
 
 data Block a = Block !(XBlock a) [Stmt a] (Maybe (Expr a))
+
+
 type family XBlock a
 
+
 deriving instance (Forall Show a) => Show (Block a)
+
 
 -- Statement
 data Stmt a
     = SExpr !(XSExp a) (Expr a)
     | Stmt !(XStmt a)
+
+
 type family XSExp a
+
+
 type family XStmt a
+
 
 data AssignOp
     = AddAssign
@@ -205,9 +289,11 @@ data AssignOp
     | DivAssign
     | ModAssign
     | Assign
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 deriving instance (Forall Show a) => Show (Stmt a)
+
 
 -- Expression
 data Expr a
@@ -228,50 +314,100 @@ data Expr a
     | Match !(XMatch a) (Expr a) [MatchArm a]
     | Expr !(XExpr a)
 
+
 deriving instance (Forall Show a) => Show (Expr a)
 
+
 type family XExprStmt a
+
+
 type family XLit a
+
+
 type family XVar a
+
+
 type family XPrefix a
+
+
 type family XBinOp a
+
+
 type family XApp a
+
+
 type family XAss a
+
+
 type family XLet a
+
+
 type family XRet a
+
+
 type family XEBlock a
+
+
 type family XBreak a
+
+
 type family XIf a
+
+
 type family XWhile a
+
+
 type family XExpr a
+
+
 type family XLoop a
+
+
 type family XLam a
+
+
 type family XMatch a
+
 
 data MatchArm a = MatchArm !(XMatchArm a) (Pattern a) (Expr a)
 
+
 deriving instance (Forall Show a) => Show (MatchArm a)
 
+
 type family XMatchArm a
+
 
 data Pattern a
     = PVar !(XPVar a) Ident
     | PEnumCon !(XPEnumCon a) Ident
     | PFunCon !(XPFunCon a) Ident [Pattern a]
 
+
 deriving instance (Forall Show a) => Show (Pattern a)
 
+
 type family XPVar a
+
+
 type family XPEnumCon a
+
+
 type family XPFunCon a
 
+
 data LamArg a = LamArg !(XLamArg a) Ident
+
+
 type family XLamArg a
+
 
 deriving instance (Forall Show a) => Show (LamArg a)
 
+
 data PrefixOp = Not | Neg
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 data BinOp
     = Mul
@@ -287,7 +423,8 @@ data BinOp
     | Gte
     | Eq
     | Neq
-    deriving (Show, Eq, Ord, Data)
+    deriving (Data, Eq, Ord, Show)
+
 
 -- Literal
 data Lit a
@@ -297,14 +434,28 @@ data Lit a
     | CharLit !(XCharLit a) Char
     | BoolLit !(XBoolLit a) Bool
     | UnitLit !(XUnitLit a)
+
+
 type family XIntLit a
+
+
 type family XDoubleLit a
+
+
 type family XStringLit a
+
+
 type family XCharLit a
+
+
 type family XBoolLit a
+
+
 type family XUnitLit a
 
+
 deriving instance (Forall Show a) => Show (Lit a)
+
 
 type Forall (c :: Data.Kind.Type -> Constraint) a =
     ( c (XApp a)
@@ -355,49 +506,140 @@ type Forall (c :: Data.Kind.Type -> Constraint) a =
     , c (XTypeVar a)
     )
 
+
 type instance XProgram () = NoExtField
+
+
 type instance XDef () = NoExtField
+
+
 type instance XFn () = NoExtField
+
+
 type instance XImport () = NoExtField
+
+
 type instance XImportExplicit () = NoExtField
+
+
 type instance XAdt () = NoExtField
+
+
 type instance XConstructor () = NoExtField
+
+
 type instance XEnumCons () = NoExtField
+
+
 type instance XFunCons () = NoExtField
+
+
 type instance XArg () = NoExtField
+
+
 type instance XTyLit () = NoExtField
+
+
 type instance XTyFun () = NoExtField
+
+
 type instance XType () = NoExtField
+
+
 type instance XTyCon () = NoExtField
+
+
 type instance XTypeVar () = NoExtField
+
+
 type instance XBlock () = NoExtField
+
+
 type instance XSExp () = NoExtField
+
+
 type instance XStmt () = NoExtField
+
+
 type instance XExprStmt () = NoExtField
+
+
 type instance XLit () = NoExtField
+
+
 type instance XVar () = NoExtField
+
+
 type instance XPrefix () = NoExtField
+
+
 type instance XBinOp () = NoExtField
+
+
 type instance XApp () = NoExtField
+
+
 type instance XAss () = NoExtField
+
+
 type instance XLet () = NoExtField
+
+
 type instance XRet () = NoExtField
+
+
 type instance XEBlock () = NoExtField
+
+
 type instance XBreak () = NoExtField
+
+
 type instance XIf () = NoExtField
+
+
 type instance XWhile () = NoExtField
+
+
 type instance XExpr () = NoExtField
+
+
 type instance XLoop () = NoExtField
+
+
 type instance XLam () = NoExtField
+
+
 type instance XMatch () = NoExtField
+
+
 type instance XMatchArm () = NoExtField
+
+
 type instance XPVar () = NoExtField
+
+
 type instance XPEnumCon () = NoExtField
+
+
 type instance XPFunCon () = NoExtField
+
+
 type instance XLamArg () = NoExtField
+
+
 type instance XIntLit () = NoExtField
+
+
 type instance XDoubleLit () = NoExtField
+
+
 type instance XStringLit () = NoExtField
+
+
 type instance XCharLit () = NoExtField
+
+
 type instance XBoolLit () = NoExtField
+
+
 type instance XUnitLit () = NoExtField

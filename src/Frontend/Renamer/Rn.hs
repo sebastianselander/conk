@@ -7,11 +7,16 @@
 module Frontend.Renamer.Rn (rename) where
 
 import Control.Lens (locally, modifying, view)
+import Control.Lens.Getter (use)
+import Control.Lens.Setter (assign)
 import Control.Monad.Validate (MonadValidate (dispute, refute))
+import Data.List.NonEmpty ((<|))
+import Relude hiding (intercalate)
+
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+
 import Frontend.Builtin (builtins)
-import Frontend.Builtin qualified as Builtins
 import Frontend.Error
 import Frontend.Parser.Types
 import Frontend.Renamer.Monad
@@ -19,11 +24,10 @@ import Frontend.Renamer.Types
 import Frontend.Types
 import Frontend.Utils (isUnique)
 import Names (Ident (..), Names, Namespace (Namespace), getText, mkNames)
-import Relude hiding (intercalate)
 import Utils (listify')
-import Data.List.NonEmpty ((<|))
-import Control.Lens.Getter (use)
-import Control.Lens.Setter (assign)
+
+import Frontend.Builtin qualified as Builtins
+
 
 rename :: Set Namespace -> Map Ident Namespace -> ProgramPar -> Either [RnError] (ProgramRn, Names)
 rename namespaces symbolMap prg@(Program namespace defs) =
@@ -42,6 +46,7 @@ rename namespaces symbolMap prg@(Program namespace defs) =
         f (Var (_, ns) name) = Just (fromMaybe namespace ns, name)
         f _ = Nothing
 
+
 rnProgram :: ProgramPar -> Gen (ProgramRn, Names)
 rnProgram program@(Program a defs) = do
     let functions = getFunctionNames program
@@ -52,6 +57,7 @@ rnProgram program@(Program a defs) = do
     defs <- locally localDefinitions (Set.union toplevelSet) (mapM rnDef (sortDefs defs))
     names <- names
     pure (Program a defs, mkNames names)
+
 
 sortDefs :: [Def a] -> [Def a]
 sortDefs = sortBy f
@@ -68,6 +74,7 @@ sortDefs = sortBy f
     f (DefFn _) (DefFn _) = EQ
     f (DefFn _) _ = GT
 
+
 uniqueDefs :: (MonadValidate [RnError] m) => [(SourceInfo, Ident)] -> m ()
 uniqueDefs = go (Builtins.names builtins)
   where
@@ -77,6 +84,7 @@ uniqueDefs = go (Builtins.names builtins)
         if Set.member name seen
             then duplicateToplevels info name
             else go (Set.insert name seen) xs
+
 
 rnFunction :: FnPar -> Gen FnRn
 rnFunction (Fn pos name tyParams arguments returnType block) = do
@@ -89,10 +97,12 @@ rnFunction (Fn pos name tyParams arguments returnType block) = do
     statements <- rnBlock tyParams block
     return $ Fn pos name tyParams arguments returnType statements
 
+
 rnDef :: DefPar -> Gen DefRn
 rnDef (DefFn fn) = DefFn <$> rnFunction fn
 rnDef (DefAdt adt) = DefAdt <$> rnAdt adt
 rnDef (DefImport imp) = DefImport <$> rnImport imp
+
 
 {-|
 Transforms all non-explicit imports to explicit imports.
@@ -147,8 +157,10 @@ rnImport (XImport extraimport) = rnExtraImport extraimport
                         defs
         pure (ImportExplicit loc namespace symbols)
 
+
 rnAdt :: AdtPar -> Gen AdtRn
 rnAdt (Adt loc name constructors) = Adt loc name <$> mapM rnConstructor constructors
+
 
 rnConstructor :: ConstructorPar -> Gen ConstructorRn
 rnConstructor = \case
@@ -158,16 +170,19 @@ rnConstructor = \case
             >> FunCons loc name
             <$> mapM (renameType emptyTyParamList) types
 
+
 rnBlock :: TyParamList -> BlockPar -> Gen BlockRn
 rnBlock tyParams (Block a stmts expr) =
     uncurry (Block a)
         <$> newContext ((,) <$> mapM (rnStatement tyParams) stmts <*> mapM (rnExpr tyParams) expr)
+
 
 rnStatement :: TyParamList -> StmtPar -> Gen StmtRn
 rnStatement tyParams = \case
     SExpr a b -> do
         b <- rnExpr tyParams b
         pure $ SExpr a b
+
 
 rnExpr :: TyParamList -> ExprPar -> Gen ExprRn
 rnExpr tyParams = goRnExpr
@@ -202,7 +217,7 @@ rnExpr tyParams = goRnExpr
                             ((pure . Just) . (\(a, b, c) -> (a, (b, c))))
                             =<< if isOk (fmap (namespace ==) ns) then boundVar variable else pure Nothing
                         )
-            case bind of 
+            case bind of
                 Free | not freeVarsAllowed -> freeVarsNotAllowed info variable
                 _ -> pure ()
             pure $ Var (info, namespace, bind) name
@@ -260,11 +275,13 @@ rnExpr tyParams = goRnExpr
             arms <- mapM (rnMatchArm tyParams) arms
             pure $ Match info scrutinee arms
 
+
 rnMatchArm :: TyParamList -> MatchArmPar -> Gen MatchArmRn
 rnMatchArm tyParams (MatchArm loc pat body) = newContext $ do
     pat <- rnPattern pat
     body <- rnExpr tyParams body
     pure $ MatchArm loc pat body
+
 
 rnPattern :: PatternPar -> Gen PatternRn
 rnPattern = fmap snd . go mempty
@@ -290,6 +307,7 @@ rnPattern = fmap snd . go mempty
                 (seen'', pats) <- go' (seen <> seen') xs
                 pure (seen <> seen' <> seen'', pat : pats)
 
+
 rnLamArgs ::
     (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
     TyParamList -> [LamArgPar] -> m [LamArgRn]
@@ -308,6 +326,7 @@ rnLamArgs tyParams = fmap (reverse . snd) . foldlM f mempty
         ty <- mapM (renameType tyParams) ty
         pure (seen', LamArg (info, ty, namespace) name : acc)
 
+
 rnLit :: LitPar -> Gen LitRn
 rnLit = \case
     IntLit info lit -> pure $ IntLit info lit
@@ -317,17 +336,20 @@ rnLit = \case
     BoolLit info lit -> pure $ BoolLit info lit
     UnitLit info -> pure $ UnitLit info
 
+
 getAdtNames :: ProgramPar -> [(SourceInfo, Ident)]
 getAdtNames = listify' adtName
   where
     adtName :: AdtPar -> Maybe (SourceInfo, Ident)
     adtName (Adt info name _) = Just (info, name)
 
+
 getFunctionNames :: ProgramPar -> [(SourceInfo, Ident)]
 getFunctionNames = listify' fnName
   where
     fnName :: FnPar -> Maybe (SourceInfo, Ident)
     fnName (Fn info name _ _ _ _) = Just (info, name)
+
 
 rnArgs ::
     (MonadState Env m, MonadValidate [RnError] m, MonadReader Ctx m) =>
@@ -346,6 +368,7 @@ rnArgs tyParams = fmap (reverse . snd) . foldlM f mempty
         (namespace, name) <- insertArg namespace name
         ty <- renameType tyParams ty
         pure (seen', Arg (info, namespace) name ty : acc)
+
 
 renameType :: (MonadReader Ctx m, MonadValidate [RnError] m) => TyParamList -> TypePar -> m TypeRn
 renameType typeParams ty = do
