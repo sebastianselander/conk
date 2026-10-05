@@ -26,6 +26,8 @@ import System.FilePath (splitDirectories)
 
 import Data.Map qualified as Map
 
+import Impossible (__IMPOSSIBLE__)
+
 
 newtype Names = Names {unNames :: Map Ident Ident}
     deriving (Data, Show)
@@ -67,7 +69,7 @@ instance Pretty Namespace where
 
 
 intercalate :: Text -> [Ident] -> Ident
-intercalate _ [] = error "INTERNAL ERROR: impossible"
+intercalate _ [] = __IMPOSSIBLE__
 intercalate t xs = Ident $ go $ fmap (\(Ident name) -> name) xs
   where
     go :: [Text] -> Text
@@ -78,7 +80,7 @@ intercalate t xs = Ident $ go $ fmap (\(Ident name) -> name) xs
 
 getOriginalName' :: Ident -> Names -> Ident
 getOriginalName' name names =
-    fromMaybe (error $ "INTERNAL ERROR: can't find name: " <> show name <> " in: " <> show names)
+    fromMaybe __IMPOSSIBLE__
         $ Map.lookup name (unNames names)
 
 

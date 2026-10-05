@@ -15,6 +15,7 @@ import Backend.Llvm.Monad
 import Backend.Llvm.Prelude (exitFailure, printString)
 import Backend.Llvm.Types
 import Backend.Types
+import Impossible (__IMPOSSIBLE__)
 import Names (Ident (..))
 import Origin (Origin (..))
 import Utils (catMaybesSnd, mapWithIndexM)
@@ -354,10 +355,10 @@ i64 = ConstantOperand . LInt Int64 . fromIntegral
 
 derefType :: Type -> Type
 derefType (PointerType ty) = ty
-derefType ty = error $ "Can not deref non-concrete pointer type `" <> show ty <> "`"
+derefType ty = __IMPOSSIBLE__
 
 
 getReturnType :: Type -> Type
 getReturnType = \case
     TyFun _ ty -> ty
-    ty -> error $ "can not extract return type of non-function type: " <> show ty
+    ty -> __IMPOSSIBLE__

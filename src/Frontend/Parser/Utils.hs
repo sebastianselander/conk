@@ -19,6 +19,7 @@ import Text.Megaparsec.Char qualified as P
 import Text.Megaparsec.Char.Lexer qualified as L
 
 import Frontend.Types
+import Impossible (__IMPOSSIBLE__)
 import Names (Ident (..))
 
 
@@ -100,7 +101,7 @@ keywords =
 
 
 keyword :: Text -> Parser ()
-keyword t = if isKeyword t then void $ lexeme $ P.string t else error $ "keyword '" <> t <> "' not declared"
+keyword t = if isKeyword t then void $ lexeme $ P.string t else __IMPOSSIBLE__
 
 
 isKeyword :: Text -> Bool

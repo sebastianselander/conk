@@ -25,6 +25,7 @@ import Frontend.Typechecker.Polytype (instantiate)
 import Frontend.Typechecker.Types
 import Frontend.Typechecker.Unify (typeOf, unifies, unify)
 import Frontend.Types
+import Impossible (__IMPOSSIBLE__)
 import Names (Ident, Names, Namespace, getOriginalName')
 import Table (DefTable, builtIns, functions)
 import Utils (listify')
@@ -124,12 +125,7 @@ tcImport table (ImportExplicit _ namespace names) =
     let funs :: Map Ident (PolyType Tc, SourceInfo)
         funs =
             fromMaybe
-                ( error
-                    $ "Failed finding namespace `"
-                    <> show namespace
-                    <> "` in table: "
-                    <> show (view functions table)
-                )
+                __IMPOSSIBLE__
                 $ Map.lookup namespace (view functions table)
         tys :: [(PolyType Tc, SourceInfo)]
         tys =
@@ -137,12 +133,7 @@ tcImport table (ImportExplicit _ namespace names) =
                 ( \symbol ->
                     ( \x ->
                         fromMaybe
-                            ( error
-                                $ "Failed finding symbol `"
-                                <> show symbol
-                                <> "`in imported program: "
-                                <> show x
-                            )
+                            __IMPOSSIBLE__
                             x
                     )
                         (Map.lookup symbol funs)
@@ -151,7 +142,7 @@ tcImport table (ImportExplicit _ namespace names) =
         mkFnType :: (PolyType Tc, SourceInfo) -> FnType
         mkFnType (ty, _) = case ty of
             PolyType tvars (TyFun _ args ret) -> FnType tvars ret args
-            ty -> error $ "Imported symbol is not a function: " <> show ty
+            ty -> __IMPOSSIBLE__
      in ImportExplicit (fmap mkFnType tys) namespace names
 
 
@@ -289,7 +280,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
                 builtins <- view (defTable . builtIns)
                 case Builtins.lookup namespace name builtins of
                     Just (ty, res) -> pure (ty, res)
-                    _ -> error "INTERNAL ERROR: Missing builtin"
+                    _ -> __IMPOSSIBLE__
         ty <- instantiateTc ty
         pure $ Var (info, ty, boundedness) name
     Prefix info Neg expr -> do
@@ -675,7 +666,7 @@ lookupVar :: (MonadState Env m) => Ident -> m (PolyType Tc, SourceInfo)
 lookupVar name =
     uses
         variables
-        ( fromMaybe (error $ "INTERNAL ERROR: Could not find variable: " <> show name)
+        ( fromMaybe __IMPOSSIBLE__
             . Map.lookup name
         )
 
@@ -696,6 +687,6 @@ lookupFun :: (MonadReader Ctx m) => Namespace -> Ident -> m (PolyType Tc, Source
 lookupFun namespace name =
     views
         (Ctx.defTable . DefTable.functions)
-        ( fromMaybe (error ("INTERNAL ERROR: Unable to find name: " <> show name))
+        ( fromMaybe __IMPOSSIBLE__
             . (Map.lookup name <=< Map.lookup namespace)
         )

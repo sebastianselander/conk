@@ -72,6 +72,7 @@ library
     Origin
     Utils
     Table
+    Impossible
 
   build-depends:
     , base

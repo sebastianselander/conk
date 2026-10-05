@@ -15,6 +15,7 @@ import Data.Text qualified as Text
 
 import Backend.Llvm.Types
 import Backend.Types
+import Impossible (__IMPOSSIBLE__)
 import Names (Ident (..))
 
 
@@ -278,20 +279,20 @@ gepType ty [] = ptr ty
 gepType OpaquePointer _ = OpaquePointer
 gepType (PointerType ty) (_ : is) = gepType ty is
 gepType (StructType ty) ((ConstantOperand (LInt Int32 n) : is)) = case maybeAt (fromIntegral n) ty of
-    Nothing -> error "gep: index out of bounds"
+    Nothing -> __IMPOSSIBLE__
     Just ty -> gepType ty is
-gepType (StructType _ty) (i : _) = error $ "gep: indices into structures must be 32-bit constants. " <> show i
+gepType (StructType _ty) (i : _) = __IMPOSSIBLE__
 gepType (TyCon _) _ = OpaquePointer
-gepType ty (_ : _) = error $ "gep: can't index into a " <> show ty
+gepType ty (_ : _) = __IMPOSSIBLE__
 
 
 extractValueType :: Type -> [Word32] -> Type
 extractValueType ty [] = ty
 extractValueType ty (x : xs) = case ty of
     StructType tys -> case maybeAt (fromIntegral x) tys of
-        Nothing -> error "Extract value: indexing outside structure"
+        Nothing -> __IMPOSSIBLE__
         Just ty -> extractValueType ty xs
-    ty -> error $ "Extract value: indexing in non-indexable structure" <> show ty
+    ty -> __IMPOSSIBLE__
 
 
 global :: Type -> Ident -> Operand

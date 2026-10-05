@@ -10,6 +10,7 @@ import Relude hiding (Type)
 
 import Backend.Llvm.Types
 import Backend.Types (Type (..))
+import Impossible (__IMPOSSIBLE__)
 
 
 llvmOut :: (Pretty a) => a -> Text
@@ -122,7 +123,7 @@ instance Pretty Instruction where
             let ty = case typeOf operand of
                     PointerType ty -> ty
                     OpaquePointer -> OpaquePointer
-                    _ -> error "Non-pointer"
+                    _ -> __IMPOSSIBLE__
             "load" <+> pretty ty <> "," <+> typed operand
         Ret operand -> "ret" <+> typed operand
         Label lbl -> pretty lbl <> ":"
@@ -131,11 +132,11 @@ instance Pretty Instruction where
         Jump lbl -> "br label %" <> pretty lbl
         GetElementPtr op ops -> case typeOf op of
             PointerType ty -> "getelementptr" <+> pretty ty <> "," <+> typed op <> "," <+> commasep (fmap typed ops)
-            ty -> error $ "Non-pointer: '" <> show (pretty ty) <> "' can not be used in GEP"
+            ty -> __IMPOSSIBLE__
         ExtractValue operand indices -> "extractvalue" <+> typed operand <> "," <+> commasep (fmap pretty indices)
         Malloc operand -> "call ptr @malloc" <> parens (typed operand)
         Unreachable -> "unreachable"
-        Phi [] -> error "phi: jump phi instruction set"
+        Phi [] -> __IMPOSSIBLE__
         Phi xs@(i : _) ->
             "phi"
                 <+> pretty (typeOf (fst i))

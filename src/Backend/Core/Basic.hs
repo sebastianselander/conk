@@ -23,6 +23,7 @@ import Backend.Llvm.Prelude (globalUnit)
 import Backend.Types
 import Frontend.Typechecker.Types (FnType (..), MetaTy (Mono), stmtType, varType)
 import Frontend.Types (Import (ImportExplicit), NoExtField (NoExtField), SourceInfo)
+import Impossible (__IMPOSSIBLE__)
 import Names (Ident (..), Names, Namespace, existName, insertName)
 import Origin (Origin (..))
 import Utils (mapWithIndexM)
@@ -279,11 +280,7 @@ dsExpr = \case
         ty' <- dsType ty
         returnType <- case ty of
             Tc.TyFun _ _ retty -> dsType retty
-            nonFunTy ->
-                error
-                    $ "Internal compiler bug: non-function type '"
-                    <> show nonFunTy
-                    <> "' on lambda when lifting"
+            nonFunTy -> __IMPOSSIBLE__
         (lambdaBody, expr) <- contextually $ dsExpr body
         modifying
             lifted
@@ -348,7 +345,7 @@ dsPat = \case
         let toVar (Tc.PVar (_, ty) name) = do
                 ty <- dsType ty
                 pure (name, ty)
-            toVar _ = error "Internal compiler crash: Nested pattern matching not supported yet"
+            toVar _ = __IMPOSSIBLE__
         Right . PCon index <$> mapM toVar nestedPats
 
 
