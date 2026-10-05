@@ -44,7 +44,7 @@ import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
 import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
-import Frontend.Tc (TypeCons (..), getFuns, getTypesAndCons, tc)
+import Frontend.Tc2 (TypeCons (..), getFuns, getTypesAndCons, typecheck)
 import Frontend.Typechecker.Pretty (pThing)
 import Frontend.Typechecker.Types (ProgramTc, Tc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
@@ -119,7 +119,7 @@ compile files = do
                 ( Map.unions
                     $ fmap (\(Program ns defs) -> Map.singleton ns (Map.fromList (cons (getTypesAndCons defs)))) res
                 )
-    programs <- case fmap (tc defTable names) res of
+    programs <- case fmap (typecheck defTable names) res of
         xs ->
             let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
                 single x =

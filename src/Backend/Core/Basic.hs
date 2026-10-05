@@ -224,12 +224,12 @@ dsExpr = \case
         (list, expr) <- contextually $ dsExpr expr
         mapM_ emit list
         let letTy = view stmtType info
-        let exprTy = (view varType info).ty
+        let exprTy = view varType info
         exprTy <- dsType exprTy
         unnamed $ typed letTy (Let name exprTy (Just expr))
         unitGlobalVariable
     Tc.Ass (info, binding) name op expr -> do
-        named $ typed (view stmtType info) =<< ass name (view varType info).ty binding op expr
+        named $ typed (view stmtType info) =<< ass name (view varType info) binding op expr
     Tc.Ret (_info, ty) expr -> do
         expr <- mapM dsExpr expr
         unnamed $ typed ty (Return (fromMaybe unit expr))

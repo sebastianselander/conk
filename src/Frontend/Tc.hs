@@ -1,48 +1,51 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-
+-- {-# LANGUAGE LambdaCase #-}
+-- {-# LANGUAGE MultiWayIf #-}
+-- {-# LANGUAGE OverloadedStrings #-}
+-- {-# LANGUAGE TemplateHaskell #-}
+--
 module Frontend.Tc where
 
-import Control.Lens (use)
-import Control.Lens.Getter (uses, view, views)
-import Control.Lens.Setter (assign, locally, modifying, (+=))
-import Control.Lens.TH
-import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
-import Control.Monad.Writer (Writer, runWriter)
-import Data.Data (Data)
-import Relude hiding (Any, Type, intercalate)
-import Relude.Unsafe (fromJust)
 
-import Data.Map.Strict qualified as Map
+--
+-- import Control.Lens (use)
+-- import Control.Lens.Getter (uses, view, views)
+-- import Control.Lens.Setter (assign, locally, modifying, (+=))
+-- import Control.Lens.TH
+-- import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
+-- import Control.Monad.Writer (Writer, runWriter)
+-- import Data.Data (Data)
+-- import Relude hiding (Any, Type, intercalate)
+-- import Relude.Unsafe (fromJust)
+--
+-- import Data.Map.Strict qualified as Map
+--
+-- import Frontend.Error
+-- import Frontend.Renamer.Types
+-- import Frontend.Substitution (Substitute (apply))
+-- import Frontend.Typechecker.Ctx (Ctx, defTable)
+-- import Frontend.Typechecker.Polytype (instantiate)
+-- import Frontend.Typechecker.Types
+-- import Frontend.Typechecker.Unify (typeOf, unifies, unify)
+-- import Frontend.Types
+-- import Impossible (__IMPOSSIBLE__)
+-- import Names (Ident, Names, Namespace, getOriginalName')
+-- import Table (DefTable, builtIns, functions)
+-- import Utils (listify')
+--
+-- import Frontend.Builtin qualified as Builtins
+-- import Frontend.Typechecker.Ctx qualified as Ctx
+-- import Table qualified as DefTable
+--
+--
+-- data Env = Env
+--     { _variables :: Map Ident (PolyType Tc, SourceInfo)
+--     , _fresh :: Int
+--     }
+--     deriving (Show)
+--
+--
 
-import Frontend.Error
-import Frontend.Renamer.Types
-import Frontend.Substitution (Substitute (apply))
-import Frontend.Typechecker.Ctx (Ctx, defTable)
-import Frontend.Typechecker.Polytype (instantiate)
-import Frontend.Typechecker.Types
-import Frontend.Typechecker.Unify (typeOf, unifies, unify)
-import Frontend.Types
-import Impossible (__IMPOSSIBLE__)
-import Names (Ident, Names, Namespace, getOriginalName')
-import Table (DefTable, builtIns, functions)
-import Utils (listify')
-
-import Frontend.Builtin qualified as Builtins
-import Frontend.Typechecker.Ctx qualified as Ctx
-import Table qualified as DefTable
-
-
-data Env = Env
-    { _variables :: Map Ident (PolyType Tc, SourceInfo)
-    , _fresh :: Int
-    }
-    deriving (Show)
-
-
-$(makeLenses ''Env)
+{- $(makeLenses ''Env)
 
 
 newtype TcM a = Tc
@@ -333,7 +336,7 @@ infExpr currentExpr = Ctx.push currentExpr $ case currentExpr of
         expr <- maybe (infExpr expr) ((`tcExpr` expr) . typeOf) mbty
         let ty = typeOf expr
         insertVar name (PolyType [] ty) info
-        pure $ Let (StmtType (TyLit NoExtField Unit) (PolyType [] ty) info) name expr
+        pure $ Let (StmtType (TyLit NoExtField Unit) ty info) name expr
     Ass (info, bind, _namespace) name op expr -> do
         (ty, info) <- case bind of
             Toplevel ->
@@ -690,3 +693,4 @@ lookupFun namespace name =
         ( fromMaybe __IMPOSSIBLE__
             . (Map.lookup name <=< Map.lookup namespace)
         )
+-}

@@ -4,11 +4,9 @@
 
 module Main (main) where
 
-import Compile
 import Control.Exception (assert, throw)
 import Data.List (isSubsequenceOf)
 import Data.Text (pack, unpack)
-import Data.Text.IO qualified as Text
 import Relude
 import System.Directory
     ( doesDirectoryExist,
@@ -16,13 +14,19 @@ import System.Directory
       listDirectory,
       withCurrentDirectory,
     )
-import System.Exit (ExitCode (..))
-import System.FilePath (takeExtension, (</>), normalise)
+import System.Exit (ExitCode (..), exitFailure)
+import System.FilePath (normalise, takeExtension, (</>))
 import System.Process (proc, readCreateProcessWithExitCode)
+
+import Data.Text.IO qualified as Text
+
+import Compile
 import Utils (File (..), conkFileExtension)
+
 
 newtype Result = Result Bool
     deriving (Show)
+
 
 data TestCase = TestCase
     { inputFiles :: NonEmpty File
@@ -32,13 +36,17 @@ data TestCase = TestCase
     }
     deriving (Show)
 
+
 data TestType = Good | Bad
     deriving (Show)
+
 
 newtype MissingDirectoryException = MissingDirectoryException FilePath
     deriving (Show)
 
+
 instance Exception MissingDirectoryException
+
 
 main :: IO ()
 main = do
@@ -46,6 +54,7 @@ main = do
     case args of
         [] -> allTests
         xs -> mapM_ (\path -> specificTest (if "good" `isSubsequenceOf` path then Good else Bad) path) xs
+
 
 specificTest :: TestType -> FilePath -> IO ()
 specificTest testType path = do
@@ -55,6 +64,7 @@ specificTest testType path = do
         True -> Relude.exitSuccess
         False -> Relude.exitFailure
 
+
 allTests :: IO ()
 allTests = do
     putStrLn "RUNNING ALL TESTS\n"
@@ -62,10 +72,12 @@ allTests = do
     bads <- sort . fmap ("test/bad/" <>) <$> listDirectory "./test/bad"
     goodResults <- mapM (readDirectory Good >=> runTestCase) goods
     badResults <- mapM (readDirectory Bad >=> runTestCase) bads
-    mapM consumeResult goodResults >>= flip unless Relude.exitFailure . and
-    mapM consumeResult badResults >>= flip unless Relude.exitFailure . and
+    isGoodSuccess <- and <$> mapM consumeResult goodResults
+    isBadSuccess <- and <$> mapM consumeResult badResults
+    unless (isGoodSuccess && isBadSuccess) Relude.exitFailure
     putStrLn "===== ALL TESTS PASSED ====="
     Relude.exitSuccess
+
 
 readDirectory :: TestType -> FilePath -> IO TestCase
 readDirectory testType dir = do
@@ -82,8 +94,10 @@ readDirectory testType dir = do
         outputFile <- mapM (\path -> File path . decodeUtf8 <$> readFileBS path) outputFilepath
         pure (TestCase (fromList inputFiles) outputFile dir testType)
 
+
 consumeResult :: Result -> IO Bool
 consumeResult = pure . coerce
+
 
 runTestCase :: TestCase -> IO Result
 runTestCase
@@ -132,9 +146,11 @@ runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType}
             putStrLn ("Test: '" <> (head inputFiles).name <> "' failed because program compiled successfully.")
                 >> pure (Result False)
 
+
 clarifyEmpty :: Text -> Text
 clarifyEmpty "" = "<empty>"
 clarifyEmpty s = s
+
 
 listDirectoryRecursive :: FilePath -> IO [FilePath]
 listDirectoryRecursive path = go "" path
@@ -145,7 +161,7 @@ listDirectoryRecursive path = go "" path
         isDir <- doesDirectoryExist path
         case isDir of
             True -> do
-                paths <- listDirectory path 
+                paths <- listDirectory path
                 paths <- mapM (go path) paths
                 pure (concat paths)
             False -> pure [path]

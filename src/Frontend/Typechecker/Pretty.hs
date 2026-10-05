@@ -180,12 +180,11 @@ prettyExpr7 (Var _ name) = Pretty.pretty name
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))
-prettyExpr7 (Let (StmtType {_varType = PolyType tvars ty}) name e) =
+prettyExpr7 (Let (StmtType {_varType = ty}) name e) =
     "let"
-        <+> Pretty.pretty name <> ":"
-        <+> "forall"
-        <+> Pretty.concatWith (Pretty.surround Pretty.space) (fmap Pretty.pretty tvars) <> "."
-        <+> Pretty.pretty ty
+        <+> Pretty.pretty name
+            <> ":"
+            <> Pretty.pretty ty
         <+> "="
         <+> Pretty.pretty e
 prettyExpr7 (Ass _ (Ident name) op e) = Pretty.pretty name <+> Pretty.pretty op <+> Pretty.pretty e

@@ -261,7 +261,7 @@ newtype MonoType = MonoType Int
     deriving (Data, Eq, Ord, Show)
 
 
-data StmtType = StmtType {_stmtType :: TypeTc, _varType :: PolyType Tc, _stmtInfo :: SourceInfo}
+data StmtType = StmtType {_stmtType :: TypeTc, _varType :: Type Tc, _stmtInfo :: SourceInfo}
     deriving (Data, Eq, Ord, Show)
 
 

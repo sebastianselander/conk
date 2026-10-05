@@ -20,7 +20,7 @@ where
 import Data.Data (Data)
 import Data.Text (pack)
 import Generics.SYB (everywhere, mkT)
-import Prettyprinter (Pretty (..), concatWith, dot, surround)
+import Prettyprinter (Pretty (..), concatWith, surround)
 import Relude hiding (intercalate)
 import System.FilePath (splitDirectories)
 
@@ -75,7 +75,7 @@ intercalate t xs = Ident $ go $ fmap (\(Ident name) -> name) xs
     go :: [Text] -> Text
     go [] = ""
     go [x] = x
-    go (x : xs) = x <> t <> (go xs)
+    go (x : xs) = x <> t <> go xs
 
 
 getOriginalName' :: Ident -> Names -> Ident

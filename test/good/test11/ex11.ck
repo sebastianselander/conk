@@ -1,6 +1,6 @@
 def foo() -> fn(int) -> int {
     return loop {
-        break \(x: int) -> x
+        break \x -> x;
     }
 }
 

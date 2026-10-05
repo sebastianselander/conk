@@ -6,7 +6,7 @@ def main() {
             std::printString("\n");
             i += 1;
         } else {
-            break 123
+            break 123;
         }
     };
     std::printInt(x);
