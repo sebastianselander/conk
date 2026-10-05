@@ -6,7 +6,7 @@
 
 module Frontend.Tc2 where
 
-import Control.Lens (argument, use)
+import Control.Lens (use)
 import Control.Lens.Getter (uses, view, views)
 import Control.Lens.Setter (assign, locally, modifying, (+=))
 import Control.Lens.TH
@@ -19,14 +19,13 @@ import Relude.Unsafe (fromJust)
 
 import Data.Map.Strict qualified as Map
 
-import Backend.Core.Types (Binding)
 import Frontend.Error
 import Frontend.Renamer.Types
 import Frontend.Substitution (Substitute (apply), Substitution)
 import Frontend.Typechecker.Ctx (Ctx, defTable)
 import Frontend.Typechecker.Polytype (instantiate)
 import Frontend.Typechecker.Types
-import Frontend.Typechecker.Unify (typeOf, unifies, unify)
+import Frontend.Typechecker.Unify (typeOf, unify)
 import Frontend.Types
 import Impossible (__IMPOSSIBLE__)
 import Names (Ident, Names, Namespace, getOriginalName')
@@ -108,7 +107,7 @@ tcImport table (ImportExplicit _ namespace names) =
         mkFnType :: (PolyType Tc, SourceInfo) -> FnType
         mkFnType (ty, _) = case ty of
             PolyType tvars (TyFun _ args ret) -> FnType tvars ret args
-            ty -> __IMPOSSIBLE__
+            _ -> __IMPOSSIBLE__
      in ImportExplicit (fmap mkFnType tys) namespace names
 
 
@@ -347,7 +346,7 @@ infer_lit loc lit = do
 infer_var ::
     (MonadReader Ctx m, MonadState Env m) =>
     SourceInfo -> Namespace -> Boundedness -> Ident -> m (Substitution Tc, ExprTc)
-infer_var loc namespace boundedness name = do
+infer_var _ namespace boundedness name = do
     (ty, info) <- case boundedness of
         Free -> lookupVar name
         Bound -> lookupVar name
