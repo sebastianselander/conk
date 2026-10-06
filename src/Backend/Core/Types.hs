@@ -70,7 +70,7 @@ data Pattern = PCon Int [(Ident, Type)]
 data Binding
     = Free
     | Bound
-    | Toplevel
+    | Function
     | Argument
     | Constructor
     | GlobalConstant

@@ -130,8 +130,10 @@ prettyType2 = \case
     TypeVar _ tyvar -> Pretty.pretty tyvar
     Type (Mono mono) -> Pretty.pretty mono
 
+
 instance Pretty MonoType where
     pretty (MonoType n) = "%" <> show n
+
 
 instance Pretty ExprTc where
     pretty = prettyExpr1

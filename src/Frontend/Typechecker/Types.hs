@@ -11,7 +11,6 @@ import Control.Lens (makeLenses)
 import Data.Data (Data)
 import Relude hiding (Any, Type)
 
-import Frontend.Renamer.Types (Boundedness)
 import Frontend.Types hiding (Bool, Char, Double, Int, String, Unit)
 
 

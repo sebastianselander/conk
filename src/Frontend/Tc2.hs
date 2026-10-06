@@ -354,7 +354,7 @@ infer_var _ namespace boundedness name = do
     (ty, info) <- case boundedness of
         Free -> lookupVar name
         Bound -> lookupVar name
-        Toplevel; Imported -> do
+        Function; Imported -> do
             (polytype, info) <- lookupFun namespace name
             ty <- instantiateTc polytype
             pure (ty, info)
@@ -443,7 +443,7 @@ infer_ass ::
     m (Substitution Tc, ExprTc)
 infer_ass loc boundedness _namespace name op expr =
     case boundedness of
-        Toplevel; Imported; Builtin; Constructor -> do
+        Function; Imported; Builtin; Constructor -> do
             names <- views Ctx.names (getOriginalName' name)
             assignNonVariable' loc names
         Free; Bound -> do

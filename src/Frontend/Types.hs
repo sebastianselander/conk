@@ -21,6 +21,14 @@ import Relude qualified
 import Names
 
 
+data Boundedness = Free | Bound | Function | Constructor | Imported | Builtin
+    deriving (Data, Eq, Ord, Show)
+
+
+instance Pretty Boundedness where
+    pretty = Relude.show
+
+
 type HaskellType = Data.Kind.Type
 
 

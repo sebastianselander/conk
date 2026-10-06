@@ -22,15 +22,19 @@ import Backend.Core.Types
 import Backend.Llvm.Prelude (globalUnit)
 import Backend.Types
 import Frontend.Typechecker.Types (FnType (..), MetaTy (Mono), stmtType, varType)
-import Frontend.Types (Import (ImportExplicit), NoExtField (NoExtField), SourceInfo)
+import Frontend.Types
+    ( Import (ImportExplicit),
+      NoExtField (NoExtField),
+      SourceInfo,
+    )
 import Impossible (__IMPOSSIBLE__)
 import Names (Ident (..), Names, Namespace, existName, insertName)
-import Origin (Origin (..))
 import Utils (mapWithIndexM)
 
-import Frontend.Renamer.Types qualified as Rn (Boundedness (..))
 import Frontend.Typechecker.Types qualified as Tc
+import Frontend.Types qualified as Bound (Boundedness (..))
 import Frontend.Types qualified as Tc
+import Origin qualified as Origin
 
 
 data Env = Env
@@ -149,8 +153,8 @@ dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info
     if isMain def
         then pure $ Main (toList emits)
         else case returnType of
-            (I 1) -> pure $ Fn Function name args returnType (toList $ emits `snoc` Typed (I 1) (Return unit))
-            _ -> pure $ Fn Function name args returnType (toList emits)
+            (I 1) -> pure $ Fn Origin.Function name args returnType (toList $ emits `snoc` Typed (I 1) (Return unit))
+            _ -> pure $ Fn Origin.Function name args returnType (toList emits)
 
 
 dsDef :: Tc.DefTc -> DsM [Def]
@@ -286,13 +290,13 @@ dsExpr = \case
             lifted
             ( `snoc`
                 Fn
-                    Lifted
+                    Origin.Lifted
                     freshName
                     args
                     returnType
                     (toList (lambdaBody `snoc` Typed returnType (Return expr)))
             )
-        pure (Typed ty' (Var Toplevel freshName))
+        pure (Typed ty' (Var Function freshName))
     Tc.Match (loc, ty) scrutinee matchArms -> do
         ty <- dsType ty
         scrutinee <- dsExpr scrutinee
@@ -421,13 +425,13 @@ dsLit = \case
     Tc.StringLit NoExtField string -> do
         name <- fresh "static_string"
         modifying staticStrings ((name, ArrayType (Text.length string + 1) (I 8), string <> "\\00") :)
-        pure (Var Toplevel name)
+        pure (Var Function name)
     Tc.CharLit NoExtField char -> pure $ Constant $ CharLit char
     Tc.BoolLit NoExtField bool -> pure $ Constant $ BoolLit bool
     Tc.UnitLit NoExtField -> pure $ Constant UnitLit
 
 
-ass :: Ident -> Tc.TypeTc -> Rn.Boundedness -> Tc.AssignOp -> Tc.Expr Tc.Tc -> DsM Expr
+ass :: Ident -> Tc.TypeTc -> Bound.Boundedness -> Tc.AssignOp -> Tc.Expr Tc.Tc -> DsM Expr
 ass name typ binding op xpr = do
     expr <- dsExpr xpr
     ty <- dsType typ
@@ -485,14 +489,14 @@ dsBinOp = \case
     Tc.Neq -> Neq
 
 
-dsBound :: Rn.Boundedness -> Binding
+dsBound :: Bound.Boundedness -> Binding
 dsBound = \case
-    Rn.Free -> Free
-    Rn.Bound -> Bound
-    Rn.Toplevel -> Toplevel
-    Rn.Constructor -> Constructor
-    Rn.Builtin -> Toplevel
-    Rn.Imported -> Toplevel
+    Bound.Free -> Free
+    Bound.Bound -> Bound
+    Bound.Function -> Function
+    Bound.Constructor -> Constructor
+    Bound.Builtin -> Function
+    Bound.Imported -> Function
 
 
 contextually :: DsM a -> DsM (DList TyExpr, a)

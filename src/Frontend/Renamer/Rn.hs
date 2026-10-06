@@ -208,7 +208,7 @@ rnExpr tyParams = goRnExpr
                         )
                         (pure . Just)
                     =<< maybe
-                        ( fmap (\x -> (Toplevel, (namespace, x)))
+                        ( fmap (\x -> (Function, (namespace, x)))
                             <$> (if isOk (fmap (namespace ==) ns) then boundFun variable else pure Nothing)
                         )
                         (pure . Just)

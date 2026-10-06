@@ -11,7 +11,8 @@ import Relude hiding (Text, Type)
 import Backend.Core.Types
 import Backend.Types
 import Names
-import Origin (Origin (Function))
+
+import Origin qualified
 
 
 prettyCore :: Program -> Text
@@ -98,7 +99,7 @@ pDef (Con index name ty arguments) =
         <> ":"
         <+> pType ty
 pDef (StaticString name ty str) = "const" <+> pretty name <> ":" <+> pType ty <+> "=" <+> pretty str
-pDef (Main exprs) = pDef (Fn Function (Ident "main") [] Unit exprs)
+pDef (Main exprs) = pDef (Fn Origin.Function (Ident "main") [] Unit exprs)
 pDef (Fn _ name args typ exprs) =
     concatWith
         (<+>)

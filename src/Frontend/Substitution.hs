@@ -3,9 +3,11 @@
 module Frontend.Substitution where
 
 import Control.Lens (over)
+import Data.Text (pack)
 import Relude hiding (Type, empty)
 
 import Data.Map qualified as Map
+import Prettyprinter qualified as Pretty
 
 import Frontend.Typechecker.Pretty ()
 import Frontend.Typechecker.Types
@@ -31,14 +33,20 @@ import Frontend.Types
       Type (..),
       (~~),
     )
-import Data.Text (pack)
-import qualified Prettyprinter as Pretty
 
 
 newtype Substitution a = Subst (Map MonoType (Type a))
 
+
 pretty :: Substitution Tc -> Text
-pretty (Subst m) = pack $ "[ " <> intercalate ", " [ show (Pretty.pretty k) <> " == " <> show (Pretty.pretty v) | (k,v)  <- Map.toList m] <> " ]"
+pretty (Subst m) =
+    pack
+        $ "[ "
+        <> intercalate
+            ", "
+            [show (Pretty.pretty k) <> " == " <> show (Pretty.pretty v) | (k, v) <- Map.toList m]
+        <> " ]"
+
 
 deriving instance (Forall Show a) => Show (Substitution a)
 

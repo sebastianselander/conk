@@ -49,9 +49,8 @@ import Data.Set qualified as Set
 
 import Frontend.Builtin (Builtins, isBuiltin)
 import Frontend.Error
-import Frontend.Renamer.Types (Boundedness (..))
 import Frontend.Typechecker.Types (Tc)
-import Frontend.Types (SourceInfo)
+import Frontend.Types (Boundedness (..), SourceInfo)
 import Names (Ident (..), Namespace)
 
 
