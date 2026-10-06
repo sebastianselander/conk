@@ -61,10 +61,10 @@ unifies ::
     SourceInfo -> [(TypeTc, TypeTc)] -> m (Substitution Tc)
 unifies loc xs = go Sub.empty xs
   where
-    go sub [] = pure sub
-    go sub ((ty1, ty2) : xs) = do
-        sub' <- unify loc (apply sub ty1) (apply sub ty2)
-        go (Sub.compose sub' sub) xs
+    go sub1 [] = pure sub1
+    go sub1 ((ty1, ty2) : xs) = do
+        sub2 <- unify loc (apply sub1 ty1) (apply sub1 ty2)
+        go (Sub.compose sub2 sub1) xs
 
 
 class TypeOf a where

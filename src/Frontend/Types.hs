@@ -18,7 +18,6 @@ import Data.Kind qualified
 import Data.Map qualified as Map
 import Relude qualified
 
-import Frontend.Phase (Phase (..))
 import Names
 
 

@@ -216,7 +216,11 @@ check_expr expected_type current_expr = Ctx.push current_expr $ case current_exp
         sub2 <- unify info expected_type (typeOf lit)
         pure (Sub.compose sub2 sub1, lit)
     Var (info, namespace, boundedness) name -> do
-        infer_var info namespace boundedness name
+        (sub1, expr) <- infer_var info namespace boundedness name
+        sub2 <- unify info expected_type (typeOf expr)
+        let sub3 = Sub.compose sub2 sub1
+        modifying variables (Map.map (first (apply sub3)))
+        pure (sub3, apply sub3 expr)
     Prefix info op expr -> do
         (sub1, expr) <- infer_prefix info op expr
         sub2 <- unify info expected_type (typeOf expr)
@@ -299,10 +303,9 @@ check_exprs ::
 check_exprs = fmap (second reverse) . foldM f (Sub.empty, [])
   where
     f (sub1, exprs) (ty, expr) = do
-        (sub2, expr) <- infer_expr expr
-        sub3 <- unify (hasInfo expr) ty (typeOf expr)
-        let sub4 = sub3 `Sub.compose` sub2 `Sub.compose` sub1
-        pure (sub4, expr : exprs)
+        (sub2, expr) <- check_expr (apply sub1 ty) expr
+        let sub3 = Sub.compose sub2 sub1
+        pure (sub3, fmap (apply sub3) (expr : exprs))
 
 
 -- FIXME(sebsel): Figure out when/how to apply substitution to the environment
@@ -334,7 +337,8 @@ infer_exprs = fmap (second reverse) . foldM f (Sub.empty, [])
   where
     f (sub1, exprs) expr = do
         (sub2, expr) <- infer_expr expr
-        pure (Sub.compose sub2 sub1, expr : exprs)
+        let sub3 = Sub.compose sub2 sub1
+        pure (sub3, fmap (apply sub3) (expr : exprs))
 
 
 infer_lit :: (Monad m) => SourceInfo -> LitRn -> m (Substitution Tc, ExprTc)
@@ -397,6 +401,7 @@ infer_app ::
     SourceInfo -> ExprRn -> [ExprRn] -> m (Substitution Tc, ExprTc)
 infer_app loc func args = do
     (sub1, func) <- infer_expr func
+    apply_env sub1
     (argument_types, return_type) <- case typeOf func of
         TyFun _ args ret -> pure (args, ret)
         ty -> applyNonFunction' loc ty
@@ -419,7 +424,7 @@ infer_let info mbty name expr = case mbty of
     Nothing -> do
         (sub, expr) <- infer_expr expr
         insertVar name (typeOf expr) info
-        pure (sub, Let (StmtType unit_type (typeOf expr) info) name expr)
+        pure (sub, apply sub $ Let (StmtType unit_type (typeOf expr) info) name expr)
     Just ty -> do
         let ty' = typeOf ty
         (sub, expr) <- check_expr ty' expr
@@ -806,6 +811,10 @@ lookupFun namespace name =
         ( fromMaybe __IMPOSSIBLE__
             . (Map.lookup name <=< Map.lookup namespace)
         )
+
+
+apply_env :: (MonadState Env m) => Substitution Tc -> m ()
+apply_env sub = modifying variables (Map.map (first (apply sub)))
 
 
 instantiateTc :: (MonadState Env m) => PolyType Tc -> m TypeTc

@@ -7,6 +7,10 @@ def id<A>(x: A) -> A {
 }
 
 def main() {
-    let x = apply(id, "hej\n");
+    let f = id;
+    let x = apply(f, "hej\n");
+    let y = apply(f, 123);
     std::printString(x);
+    std::printInt(y);
+    std::printChar('\n');
 }

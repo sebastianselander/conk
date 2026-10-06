@@ -11,7 +11,7 @@ def main() {
     let two = f(69);
     let o = id('o');
     let hej = apply(id,"hej\n");
-    let unit = apply(f, ());
+    let unit = apply(id, ());
     std::printInt(two);
     std::printChar(o);
     std::printString(hej);

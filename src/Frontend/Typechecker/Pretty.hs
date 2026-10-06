@@ -4,9 +4,11 @@
 
 module Frontend.Typechecker.Pretty where
 
+import Data.List ((!!))
 import Prettyprinter (Doc, Pretty, (<+>))
 import Relude
 
+import Data.Text qualified as Text
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
 
@@ -126,8 +128,10 @@ prettyType2 = \case
     ty@TyFun {} -> Pretty.parens (Pretty.pretty ty)
     Type AnyX -> "Any"
     TypeVar _ tyvar -> Pretty.pretty tyvar
-    Type (Mono (MonoType n)) -> "%mono" <> show n
+    Type (Mono mono) -> Pretty.pretty mono
 
+instance Pretty MonoType where
+    pretty (MonoType n) = "%" <> show n
 
 instance Pretty ExprTc where
     pretty = prettyExpr1
@@ -176,7 +180,7 @@ prettyExpr7 :: ExprTc -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var _ name) = Pretty.pretty name
+prettyExpr7 (Var (_, ty, _) name) = Pretty.parens $ Pretty.pretty name <> ":" <+> Pretty.pretty ty
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))
