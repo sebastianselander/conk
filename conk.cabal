@@ -65,6 +65,8 @@ library
     Frontend.Typechecker.Types
     Frontend.Typechecker.Polytype
     Frontend.Typechecker.Unify
+    Frontend.Monomorphizer.Types
+    Frontend.Monomorphizer.Monad
     Frontend.Types
     Frontend.Substitution
     Names
