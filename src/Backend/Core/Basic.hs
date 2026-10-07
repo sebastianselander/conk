@@ -17,6 +17,7 @@ import Relude hiding (Type, fromList, toList)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as Text
+import Prettyprinter qualified as Pretty
 
 import Backend.Core.Types
 import Backend.Llvm.Prelude (globalUnit)
@@ -35,7 +36,6 @@ import Frontend.Typechecker.Types qualified as Tc
 import Frontend.Types qualified as Bound (Boundedness (..))
 import Frontend.Types qualified as Tc
 import Origin qualified
-import qualified Prettyprinter as Pretty
 
 
 newtype DsM a = DsM {runDsm :: StateT Env (Reader Ctx) a}
@@ -127,7 +127,7 @@ fresh prefix = go 0
 
 
 basicCore :: Names -> Tc.ProgramTc -> Program
-basicCore names program@(Tc.Program namespace _) = fst $ run mempty (Ctx (const $ pure ()) namespace ) names 0 $ dsProgram program
+basicCore names program@(Tc.Program namespace _) = fst $ run mempty (Ctx (const $ pure ()) namespace) names 0 $ dsProgram program
 
 
 dsProgram :: Tc.ProgramTc -> DsM Program
