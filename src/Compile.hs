@@ -139,11 +139,8 @@ compile passes files = do
                             pure res
              in mapM single xs
 
-    let collections = fmap collect programs
+    let _collections = fmap collect programs
 
-    liftIO $ Text.putStrLn "=== Collections ===\n"
-    liftIO $ traverse_ print collections
-    liftIO $ Text.putStrLn ""
 
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do
