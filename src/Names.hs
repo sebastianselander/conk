@@ -9,6 +9,7 @@ module Names
       mkNamespace,
       existName,
       getText,
+      toPythonStyle,
       insertName,
       getOriginalName',
       renameBack,
@@ -25,6 +26,7 @@ import Relude hiding (intercalate)
 import System.FilePath (splitDirectories)
 
 import Data.Map qualified as Map
+import Data.Text qualified as Text
 
 import Impossible (__IMPOSSIBLE__)
 
@@ -46,7 +48,11 @@ mkNamespace :: String -> Namespace
 mkNamespace name = Namespace $ fmap pack (fromList (splitDirectories name))
 
 
--- Namespace, e.g: `foo.bar.baz`, here `foo.bar` is the namespace and `baz` is an Ident
+toPythonStyle :: Namespace -> Text
+toPythonStyle (Namespace list) = Text.intercalate "." $ toList list
+
+
+-- Namespace, e.g: `foo::bar::baz`, here `foo::bar` is the namespace and `baz` is an Ident
 newtype Namespace = Namespace (NonEmpty Text)
     deriving (Data, Eq, Ord, Semigroup, Show)
 
