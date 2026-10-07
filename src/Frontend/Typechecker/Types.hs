@@ -12,6 +12,7 @@ import Data.Data (Data)
 import Relude hiding (Any, Type)
 
 import Frontend.Types hiding (Bool, Char, Double, Int, String, Unit)
+import Names (Namespace)
 
 
 data Tc deriving (Data)
@@ -117,7 +118,7 @@ deriving instance Data MatchArmTc
 deriving instance Data PatternTc
 
 
-type instance XProgram Tc = NoExtField
+type instance XProgram Tc = Namespace
 
 
 type instance XArg Tc = NoExtField

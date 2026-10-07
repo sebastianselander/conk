@@ -22,7 +22,7 @@ pThing = Pretty.renderStrict . Pretty.layoutPretty Pretty.defaultLayoutOptions .
 
 
 instance Pretty ProgramTc where
-    pretty (Program NoExtField defs) =
+    pretty (Program _ defs) =
         Pretty.concatWith (Pretty.surround (Pretty.hardline <> Pretty.hardline)) (fmap Pretty.pretty defs)
 
 

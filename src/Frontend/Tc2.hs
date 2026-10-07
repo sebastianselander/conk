@@ -71,9 +71,9 @@ typecheck ::
     Names ->
     ProgramRn ->
     (Either [TcError] ProgramTc, [TcWarning])
-typecheck defTable names (Program _namespace defs) =
+typecheck defTable names (Program namespace defs) =
     case first partitionEithers $ unzip $ fmap (tcDefs names defTable) defs of
-        (([], defs), warnings) -> (Right $ Program NoExtField defs, mconcat warnings)
+        (([], defs), warnings) -> (Right $ Program namespace defs, mconcat warnings)
         ((errs, _), warnings) -> (Left $ mconcat errs, mconcat warnings)
 
 

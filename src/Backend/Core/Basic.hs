@@ -34,7 +34,12 @@ import Utils (mapWithIndexM)
 import Frontend.Typechecker.Types qualified as Tc
 import Frontend.Types qualified as Bound (Boundedness (..))
 import Frontend.Types qualified as Tc
-import Origin qualified as Origin
+import Origin qualified
+import qualified Prettyprinter as Pretty
+
+
+newtype DsM a = DsM {runDsm :: StateT Env (Reader Ctx) a}
+    deriving (Applicative, Functor, Monad, MonadReader Ctx, MonadState Env)
 
 
 data Env = Env
@@ -47,14 +52,17 @@ data Env = Env
     }
 
 
+data Ctx = Ctx
+    { _func :: TyExpr -> DsM ()
+    , _namespace :: Namespace
+    }
+
+
+$(makeLenses ''Ctx)
 $(makeLenses ''Env)
 
 
-newtype DsM a = DsM {runDsm :: StateT Env (Reader (TyExpr -> DsM ())) a}
-    deriving (Applicative, Functor, Monad, MonadReader (TyExpr -> DsM ()), MonadState Env)
-
-
-run :: Map Ident Int -> (TyExpr -> DsM ()) -> Names -> Int -> DsM a -> (a, Env)
+run :: Map Ident Int -> Ctx -> Names -> Int -> DsM a -> (a, Env)
 run cons f names n = flip runReader f . flip runStateT (Env mempty names n mempty mempty cons) . runDsm
 
 
@@ -119,11 +127,11 @@ fresh prefix = go 0
 
 
 basicCore :: Names -> Tc.ProgramTc -> Program
-basicCore names = fst . run mempty (const $ pure ()) names 0 . dsProgram
+basicCore names program@(Tc.Program namespace _) = fst $ run mempty (Ctx (const $ pure ()) namespace ) names 0 $ dsProgram program
 
 
 dsProgram :: Tc.ProgramTc -> DsM Program
-dsProgram (Tc.Program Tc.NoExtField defs) = do
+dsProgram (Tc.Program _ defs) = do
     defs <- concatMapM dsDef defs
     lifteds <- use lifted
     strings <- use staticStrings
@@ -232,8 +240,7 @@ dsExpr = \case
         exprTy <- dsType exprTy
         unnamed $ typed letTy (Let name exprTy (Just expr))
         unitGlobalVariable
-    Tc.Ass (info, binding) name op expr -> do
-        named $ typed (view stmtType info) =<< ass name (view varType info) binding op expr
+    Tc.Ass (info, binding) name op expr -> named $ typed (view stmtType info) =<< ass name (view varType info) binding op expr
     Tc.Ret (_info, ty) expr -> do
         expr <- mapM dsExpr expr
         unnamed $ typed ty (Return (fromMaybe unit expr))
@@ -246,7 +253,7 @@ dsExpr = \case
         emits block
         pure (Typed ty $ Var Bound var)
     Tc.Break (_info, ty) mbExpr -> do
-        f <- ask
+        f <- view func
         expr <- mapM dsExpr mbExpr
         case expr of
             Nothing -> do
@@ -269,13 +276,15 @@ dsExpr = \case
         cond <- dsExpr cond
         ty' <- dsType ty
         var <- declare ty'
-        block <- dsBlock (emit . Typed Unit . Ass var ty') var block
+        namespace <- view namespace
+        block <- dsBlock (Ctx (emit . Typed Unit . Ass var ty') namespace) var block
         unnamed $ typed ty (While cond block)
         named $ pure $ Typed Unit (Var Bound var)
     Tc.Loop (_info, ty) block -> do
         ty' <- dsType ty
         var <- declare ty'
-        block <- dsBlock (emit . Typed Unit . Ass var ty') var block
+        namespace <- view namespace
+        block <- dsBlock (Ctx (emit . Typed Unit . Ass var ty') namespace) var block
         unnamed $ typed ty (While true block)
         named $ pure $ Typed ty' (Var Bound var)
     Tc.Lam (_info, ty) lamArgs body -> do
@@ -380,7 +389,7 @@ mkArg (Tc.LamArg ty name) = do
 
 
 -- TODO: Rewrite
-dsBlock :: (TyExpr -> DsM ()) -> Ident -> Tc.Block Tc.Tc -> DsM [TyExpr]
+dsBlock :: Ctx -> Ident -> Tc.Block Tc.Tc -> DsM [TyExpr]
 dsBlock f _ (Tc.Block (_, Tc.TyLit NoExtField Tc.Unit) stmts tail) = do
     names' <- use names
     n <- use nameCounter
@@ -424,7 +433,8 @@ dsLit = \case
     Tc.IntLit NoExtField int -> pure $ Constant $ IntLit int
     Tc.DoubleLit NoExtField double -> pure $ Constant $ DoubleLit double
     Tc.StringLit NoExtField string -> do
-        name <- fresh "static_string"
+        namespace <- view namespace
+        name <- fresh $ show (Pretty.pretty namespace) <> ".static_string"
         modifying staticStrings ((name, ArrayType (Text.length string + 1) (I 8), string <> "\\00") :)
         pure (Var Function name)
     Tc.CharLit NoExtField char -> pure $ Constant $ CharLit char
