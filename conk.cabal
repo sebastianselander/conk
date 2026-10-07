@@ -60,6 +60,7 @@ library
     Frontend.Tc2
     Frontend.TH
     Frontend.Phase
+    Frontend.MonomorphizerCollector
     Frontend.Typechecker.Ctx
     Frontend.Typechecker.Pretty
     Frontend.Typechecker.Types
