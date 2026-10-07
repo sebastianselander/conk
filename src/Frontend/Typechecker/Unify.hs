@@ -4,12 +4,21 @@ import Control.Lens.Getter (view)
 import Control.Monad.Validate (MonadValidate)
 import Relude hiding (Type)
 
-import Frontend.Error (TcError, tyExpectedGot, tyExpectedGot')
+import Frontend.Error (TcError, tyExpectedGot')
 import Frontend.Renamer.Types (ArgRn, Rn)
 import Frontend.Substitution (Substitute (apply), Substitution)
 import Frontend.Typechecker.Ctx (Ctx)
 import Frontend.Typechecker.Polytype (occurs)
-import Frontend.Typechecker.Types (ArgTc, ExprTc, MetaTy (..), StmtTc, Tc, TypeTc, stmtType)
+import Frontend.Typechecker.Types
+    ( ArgTc,
+      ExprTc,
+      MetaTy (..),
+      StmtTc,
+      Tc,
+      TypeApp (TypeApp),
+      TypeTc,
+      stmtType,
+    )
 import Frontend.Types
     ( Arg (..),
       Block (..),
@@ -97,6 +106,7 @@ instance TypeOf ExprTc where
         Loop ty _ -> snd ty
         Lam ty _ _ -> snd ty
         Match ty _ _ -> snd ty
+        Expr (TypeApp expr _) -> typeOf expr
 
 
 instance TypeOf (Block Tc) where

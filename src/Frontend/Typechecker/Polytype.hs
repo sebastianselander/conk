@@ -6,6 +6,7 @@
 
 module Frontend.Typechecker.Polytype where
 
+import Control.Exception (assert)
 import Data.Text (pack)
 import Relude hiding (Any, Type, toList)
 
@@ -24,17 +25,25 @@ import Frontend.Types (NoExtField (NoExtField), TyVar (TyVar), Type (..))
 import Names (Ident (Ident))
 
 
+instantiate_with :: Map TyVar MonoType -> PolyType Tc -> Type Tc
+instantiate_with tbl (PolyType tyvars ty) =
+    assert (and [Map.member tyvar tbl | tyvar <- tyvars])
+        $ replaceTyVars (Map.map (Type . Mono) tbl) ty
+
+
 instantiate :: Int -> PolyType Tc -> (Type Tc, Int)
 instantiate n (PolyType typevars ty) =
-    let replaceTyVars :: Map TyVar (Type Tc) -> Type Tc -> Type Tc
-        replaceTyVars tbl = \case
-            TyLit NoExtField lit -> TyLit NoExtField lit
-            TyFun tyParamList args ret -> TyFun tyParamList (fmap (replaceTyVars tbl) args) (replaceTyVars tbl ret)
-            TyCon NoExtField name -> TyCon NoExtField name
-            t@(TypeVar NoExtField tyvar) -> fromMaybe t (Map.lookup tyvar tbl)
-            Type meta -> Type meta
-        tvars_to_replace = Map.fromList $ zipWith (\ty n -> (ty, Monotype n)) typevars [n ..]
+    let tvars_to_replace = Map.fromList $ zipWith (\ty n -> (ty, Monotype n)) typevars [n ..]
      in (replaceTyVars tvars_to_replace ty, n + Map.size tvars_to_replace)
+
+
+replaceTyVars :: Map TyVar (Type Tc) -> Type Tc -> Type Tc
+replaceTyVars tbl = \case
+    TyLit NoExtField lit -> TyLit NoExtField lit
+    TyFun tyParamList args ret -> TyFun tyParamList (fmap (replaceTyVars tbl) args) (replaceTyVars tbl ret)
+    TyCon NoExtField name -> TyCon NoExtField name
+    t@(TypeVar NoExtField tyvar) -> fromMaybe t (Map.lookup tyvar tbl)
+    Type meta -> Type meta
 
 
 occurs :: MonoType -> Type Tc -> Bool

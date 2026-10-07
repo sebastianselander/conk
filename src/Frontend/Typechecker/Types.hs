@@ -72,6 +72,27 @@ type TcInfo = (SourceInfo, TypeTc)
 type TcInfoBound = (SourceInfo, TypeTc, Boundedness)
 
 
+deriving instance Data ProgramTc
+
+
+deriving instance Data DefTc
+
+
+deriving instance Data FnTc
+
+
+deriving instance Data ArgTc
+
+
+deriving instance Data AdtTc
+
+
+deriving instance Data ConstructorTc
+
+
+deriving instance Data ImportTc
+
+
 deriving instance Data StmtTc
 
 
@@ -189,7 +210,12 @@ type instance XExprStmt Tc = NoExtField
 type instance XApp Tc = TcInfo
 
 
-type instance XExpr Tc = DataConCantHappen
+-- FIXME: Make this unique to function calls (and perhaps constructors, or make a separate one) and remove Toplevel from boundedness
+data TypeApp = TypeApp ExprTc [TypeTc]
+    deriving (Data, Show)
+
+
+type instance XExpr Tc = TypeApp
 
 
 type instance XIntLit Tc = NoExtField

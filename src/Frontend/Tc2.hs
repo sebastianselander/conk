@@ -23,7 +23,7 @@ import Frontend.Error
 import Frontend.Renamer.Types
 import Frontend.Substitution (Substitute (apply), Substitution)
 import Frontend.Typechecker.Ctx (Ctx, defTable)
-import Frontend.Typechecker.Polytype (instantiate)
+import Frontend.Typechecker.Polytype (instantiate, instantiate_with)
 import Frontend.Typechecker.Types
 import Frontend.Typechecker.Unify (typeOf, unify)
 import Frontend.Types
@@ -350,25 +350,37 @@ infer_lit loc lit = do
 infer_var ::
     (MonadReader Ctx m, MonadState Env m) =>
     SourceInfo -> Namespace -> Boundedness -> Ident -> m (Substitution Tc, ExprTc)
-infer_var _ namespace boundedness name = do
-    (ty, info) <- case boundedness of
-        Free -> lookupVar name
-        Bound -> lookupVar name
+infer_var loc namespace boundedness name = do
+    case boundedness of
+        Free; Bound -> do
+            (ty, _) <- lookupVar name
+            pure (Sub.empty, Var (loc, ty, boundedness) name)
         Function; Imported -> do
             (polytype, info) <- lookupFun namespace name
-            ty <- instantiateTc polytype
-            pure (ty, info)
+            let PolyType tyvars ty = polytype
+            tbl <- traverse (\ty -> (ty,) <$> fresh_mono) tyvars
+            let ty = instantiate_with (Map.fromList tbl) polytype
+            pure
+                ( Sub.empty
+                , Expr
+                    $ TypeApp
+                        (Var (info, ty, boundedness) name)
+                        (fmap (Type . Mono . snd) tbl)
+                )
         Constructor -> do
-            (polytype, info) <- lookupCon namespace name
+            (polytype, _) <- lookupCon namespace name
             ty <- instantiateTc polytype
-            pure (ty, info)
+            pure (Sub.empty, Var (loc, ty, boundedness) name)
         Builtin -> do
             builtins <- view (defTable . builtIns)
             case Builtins.lookup namespace name builtins of
-                Just (ty, info) -> (,info) <$> instantiateTc ty
+                Just (ty, info) -> do
+                    ty <- instantiateTc ty
+                    pure (Sub.empty, Var (info, ty, boundedness) name)
                 _ -> __IMPOSSIBLE__
-    pure (Sub.empty, Var (info, ty, boundedness) name)
 
+
+-- pure (Sub.empty, Var (info, ty, boundedness) name)
 
 infer_prefix ::
     (MonadReader Ctx m, MonadState Env m, MonadValidate [TcError] m) =>
@@ -826,10 +838,14 @@ instantiateTc ty = do
 
 
 fresh_type :: (MonadState Env m) => m TypeTc
-fresh_type = do
+fresh_type = Type . Mono <$> fresh_mono
+
+
+fresh_mono :: (MonadState Env m) => m MonoType
+fresh_mono = do
     fr <- use fresh
     fresh += 1
-    pure (Type (Mono (MonoType fr)))
+    pure (MonoType fr)
 
 
 get_exprs :: Block Tc -> [Expr Tc]

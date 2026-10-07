@@ -18,6 +18,7 @@ import Frontend.Typechecker.Types
       StmtTc,
       StmtType,
       Tc,
+      TypeApp (TypeApp),
       stmtType,
       varType,
     )
@@ -123,6 +124,7 @@ instance Substitute (Expr Tc) where
         Loop (loc, ty) block -> Loop (loc, apply sub ty) (apply sub block)
         Lam (loc, ty) args body -> Lam (loc, apply sub ty) (fmap (apply sub) args) (apply sub body)
         Match (loc, ty) scrutinee matchArms -> Match (loc, apply sub ty) (apply sub scrutinee) (fmap (apply sub) matchArms)
+        Expr (TypeApp expr type_args) -> Expr (TypeApp (apply sub expr) (fmap (apply sub) type_args))
 
 
 instance Substitute (LamArg Tc) where
