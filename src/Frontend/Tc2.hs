@@ -654,7 +654,7 @@ infer_match loc scrutinee arms = do
             let f (sub1, arms) arm = do
                     (sub2, arm) <- check_arm scrutinee_type arm_type arm
                     pure (Sub.compose sub2 sub1, arm : arms)
-            (sub2, arms) <- foldM f (Sub.compose sub1 sub, []) arms
+            (sub2, arms) <- second reverse <$> foldM f (Sub.compose sub1 sub, []) arms
             modifying variables (Map.map (first (apply sub2)))
             pure (sub2, Match (loc, typeOf arm) scrutinee (arm : arms))
 
@@ -877,6 +877,7 @@ find_all_breaks e = case e of
     Loop {} -> []
     Lam {} -> []
     Match _ scrutinee arms -> find_all_breaks scrutinee <> concatMap breakArm arms
+    Expr (TypeApp expr _) -> find_all_breaks expr
   where
     breakArm :: MatchArm Tc -> [ExprTc]
     breakArm (MatchArm _ _ body) = find_all_breaks body
