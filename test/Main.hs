@@ -14,7 +14,7 @@ import System.Directory
       listDirectory,
       withCurrentDirectory,
     )
-import System.Exit (ExitCode (..), exitFailure)
+import System.Exit (ExitCode (..))
 import System.FilePath (normalise, takeExtension, (</>))
 import System.Process (proc, readCreateProcessWithExitCode)
 
@@ -64,20 +64,55 @@ specificTest testType path = do
         True -> Relude.exitSuccess
         False -> Relude.exitFailure
 
-
 allTests :: IO ()
 allTests = do
     putStrLn "RUNNING ALL TESTS\n"
     goods <- sort . fmap ("test/good/" <>) <$> listDirectory "./test/good"
     bads <- sort . fmap ("test/bad/" <>) <$> listDirectory "./test/bad"
-    goodResults <- mapM (readDirectory Good >=> runTestCase) goods
-    badResults <- mapM (readDirectory Bad >=> runTestCase) bads
+    
+    putStrLn "Running GOOD tests..."
+    goodResults <- mapM (\path -> do
+        result <- readDirectory Good path >>= runTestCase
+        consumed <- consumeResult result
+        putStrLn $ "  " <> path <> ": " <> (if consumed then "PASS" else "FAIL")
+        pure result
+      ) goods
+    
+    putStrLn "\nRunning BAD tests..."
+    badResults <- mapM (\path -> do
+        result <- readDirectory Bad path >>= runTestCase
+        consumed <- consumeResult result
+        putStrLn $ "  " <> path <> ": " <> (if consumed then "PASS" else "FAIL")
+        pure result
+      ) bads
+    
     isGoodSuccess <- and <$> mapM consumeResult goodResults
     isBadSuccess <- and <$> mapM consumeResult badResults
+    
+    putStrLn "\n=========================================================="
     unless (isGoodSuccess && isBadSuccess) Relude.exitFailure
     putStrLn "===== ALL TESTS PASSED ====="
     Relude.exitSuccess
 
+
+-- allTests :: IO ()
+-- allTests = do
+--     putStrLn "RUNNING ALL TESTS\n"
+--     goods <- sort . fmap ("test/good/" <>) <$> listDirectory "./test/good"
+--     bads <- sort . fmap ("test/bad/" <>) <$> listDirectory "./test/bad"
+--     putStrLn "Running GOOD tests"
+--     goodResults <- mapM (readDirectory Good >=> runTestCase) goods
+--     putStrLn "Running BAD tests"
+--     badResults <- mapM (readDirectory Bad >=> runTestCase) bads
+--     isGoodSuccess <- and <$> mapM consumeResult goodResults
+--     isBadSuccess <- and <$> mapM consumeResult badResults
+--     if isGoodSuccess && isBadSuccess
+--         then do
+--             putStrLn "===== ALL TESTS PASSED ====="
+--             Relude.exitSuccess
+--         else
+--             Relude.exitFailure
+--
 
 readDirectory :: TestType -> FilePath -> IO TestCase
 readDirectory testType dir = do
@@ -136,7 +171,7 @@ runTestCase
                                     putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
                                     pure (Result False)
 runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType} = do
-    (a, _) <- runCompile inputFiles
+    (a, _) <- runCompile mempty inputFiles
     case (a, testType) of
         (Left reason, Bad) ->
             putStrLn
