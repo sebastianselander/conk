@@ -136,7 +136,7 @@ runTestCase
                                     putStrLn ("Test: '" <> outFile.name <> "' failed with error message: " <> err)
                                     pure (Result False)
 runTestCase TestCase {inputFiles = inputFiles, outFile = _, testType = testType} = do
-    let (a, _) = runCompile inputFiles
+    (a, _) <- runCompile inputFiles
     case (a, testType) of
         (Left reason, Bad) ->
             putStrLn

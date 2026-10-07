@@ -8,7 +8,7 @@ module Compile where
 
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
-import Control.Monad.Writer (MonadWriter, Writer, runWriter, tell)
+import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
 import Data.Foldable1 (foldr1)
 import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
@@ -39,6 +39,7 @@ import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
 import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
+import Frontend.MonomorphizerCollector (collect)
 import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
@@ -52,6 +53,7 @@ import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
 import Table (DefTable (..))
 import Utils (File (name), zipNE)
+import qualified Data.Text.IO as Text
 
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
@@ -69,8 +71,9 @@ instance Monoid DebugOutputs where
     mappend = (<>)
 
 
-log :: (MonadWriter DebugOutputs m) => DebugOutput -> [Text] -> m ()
+log :: (MonadWriter DebugOutputs m, MonadIO m) => DebugOutput -> [Text] -> m ()
 log debug warnings = do
+    liftIO $ Text.putStrLn (showDebug debug)
     tell (Debugs [debug] warnings)
 
 
@@ -93,7 +96,7 @@ gatherSymbols =
         DefImport _ -> Nothing
 
 
-compile :: NonEmpty File -> ExceptT Text (Writer DebugOutputs) (NonEmpty Ir)
+compile :: NonEmpty File -> ExceptT Text (WriterT DebugOutputs IO) (NonEmpty Ir)
 compile files = do
     programs <- liftEither $ left report $ mapM parse files
     log (Debug Parse Nothing (toStrict $ pShow programs)) []
@@ -121,7 +124,8 @@ compile files = do
                 )
     programs <- case fmap (typecheck defTable names) res of
         xs ->
-            let single :: (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (Writer DebugOutputs) ProgramTc
+            let single ::
+                    (Either [TcError] ProgramTc, [TcWarning]) -> ExceptT Text (WriterT DebugOutputs IO) ProgramTc
                 single x =
                     case x of
                         (res, warnings) -> do
@@ -129,6 +133,8 @@ compile files = do
                             log (Debug TypeCheck (Just $ pThing res) (toStrict $ pShow res)) (fmap report warnings)
                             pure res
              in mapM single xs
+
+    let collections = fmap collect programs
 
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do
@@ -141,8 +147,8 @@ compile files = do
             pure res
 
 
-runCompile :: NonEmpty File -> (Either Text (NonEmpty Ir), DebugOutputs)
-runCompile = runWriter . runExceptT . compile
+runCompile :: NonEmpty File -> IO (Either Text (NonEmpty Ir), DebugOutputs)
+runCompile = runWriterT . runExceptT . compile
 
 
 produceAsmFile :: FilePath -> Either Text Ir -> IO FilePath
@@ -196,43 +202,43 @@ linkObjectFiles files out = do
 
 produceExecutable :: (HasCallStack) => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
 produceExecutable dumps files out = do
-    case runCompile files of
-        (res, debugs) -> case res of
-            Left err -> do
-                hPutStrLn stderr err
-                exitFailure
-            Right prg -> do
-                let debug = showDebugs dumps debugs
-                case debug of
-                    "" -> pure ()
-                    _ -> hPutStrLn stderr debug
-                let buildDir = "build"
-                exists <- doesDirectoryExist buildDir
-                when exists $ removeDirectoryRecursive buildDir
-                createDirectory buildDir
-                preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))
-                asmFiles <-
-                    mapM
-                        (\(file, prg) -> produceAsmFile (replaceExtension file.name "asm") (Right prg))
-                        (zipNE files prg)
-                objFiles <-
-                    mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
-                linkObjectFiles objFiles (buildDir </> out)
+    (res, debugs) <- runCompile files
+    case res of
+        Left err -> do
+            hPutStrLn stderr err
+            exitFailure
+        Right prg -> do
+            let debug = showDebugs dumps debugs
+            case debug of
+                "" -> pure ()
+                _ -> hPutStrLn stderr debug
+            let buildDir = "build"
+            exists <- doesDirectoryExist buildDir
+            when exists $ removeDirectoryRecursive buildDir
+            createDirectory buildDir
+            preludeFile <- produceAsmFile "prelude.asm" (Left (snd prelude))
+            asmFiles <-
+                mapM
+                    (\(file, prg) -> produceAsmFile (replaceExtension file.name "asm") (Right prg))
+                    (zipNE files prg)
+            objFiles <-
+                mapM (\file -> produceObjectFile file (replaceExtension file "o")) (preludeFile :| toList asmFiles)
+            linkObjectFiles objFiles (buildDir </> out)
 
 
-showDebug :: Set Pass -> DebugOutput -> Text
-showDebug dumps (Debug phase pretty normal) =
-    if Set.member phase dumps
-        then
-            unlines
-                [ "======== " <> show phase <> " output ========"
-                , ""
-                , normal
-                , fromMaybe "" pretty
-                , ""
-                ]
-        else ""
+showDebug :: DebugOutput -> Text
+showDebug (Debug phase pretty normal) =
+    unlines
+        [ "======== " <> show phase <> " output ========"
+        , ""
+        , normal
+        , fromMaybe "" pretty
+        , ""
+        ]
 
 
 showDebugs :: Set Pass -> DebugOutputs -> Text
-showDebugs dumps (Debugs debugs warnings) = concat (fmap (showDebug dumps) debugs) <> concat warnings
+showDebugs dumps (Debugs debugs warnings) =
+    concat
+        (fmap (\dbg@(Debug phase _ _) -> if Set.member phase dumps then showDebug dbg else "") debugs)
+        <> concat warnings
