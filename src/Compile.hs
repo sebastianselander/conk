@@ -13,7 +13,12 @@ import Data.Foldable1 (foldr1)
 import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
 import Relude hiding (concat, concatMap, intercalate)
-import System.Directory.Extra (createDirectory, doesDirectoryExist, removeDirectoryRecursive)
+import System.Directory.Extra
+    ( createDirectory,
+      doesDirectoryExist,
+      removeDirectoryRecursive,
+      withCurrentDirectory,
+    )
 import System.Exit (ExitCode (..))
 import System.FilePath
     ( dropExtension,
@@ -30,6 +35,7 @@ import Data.Functor qualified as Functor
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import Data.Text.IO qualified as Text
 
 import Backend.Core.Core (lowerToCore)
 import Backend.Core.Pretty (prettyCore)
@@ -53,7 +59,6 @@ import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
 import Table (DefTable (..))
 import Utils (File (name), zipNE)
-import qualified Data.Text.IO as Text
 
 
 data DebugOutput = Debug {phase :: Pass, prettyTxt :: Maybe Text, normalTxt :: Text}
@@ -71,9 +76,9 @@ instance Monoid DebugOutputs where
     mappend = (<>)
 
 
-log :: (MonadWriter DebugOutputs m, MonadIO m) => DebugOutput -> [Text] -> m ()
-log debug warnings = do
-    liftIO $ Text.putStrLn (showDebug debug)
+log :: (MonadWriter DebugOutputs m, MonadIO m) => Set Pass -> DebugOutput -> [Text] -> m ()
+log passes_to_log debug@(Debug phase _ _) warnings = do
+    when (Set.member phase passes_to_log) $ liftIO $ Text.putStrLn (showDebug debug)
     tell (Debugs [debug] warnings)
 
 
@@ -96,10 +101,10 @@ gatherSymbols =
         DefImport _ -> Nothing
 
 
-compile :: NonEmpty File -> ExceptT Text (WriterT DebugOutputs IO) (NonEmpty Ir)
-compile files = do
+compile :: Set Pass -> NonEmpty File -> ExceptT Text (WriterT DebugOutputs IO) (NonEmpty Ir)
+compile passes files = do
     programs <- liftEither $ left report $ mapM parse files
-    log (Debug Parse Nothing (toStrict $ pShow programs)) []
+    log passes (Debug Parse Nothing (toStrict $ pShow programs)) []
 
     let modules = NE.zip files programs
     let symbolsMap = gatherSymbols modules
@@ -107,10 +112,10 @@ compile files = do
 
     res <- liftEither $ left report $ mapM (rename namespaces symbolsMap) programs
     let (programs, names) = second (foldr1 combine) (Functor.unzip res)
-    log (Debug Rename (Just $ prettyRenamer programs) (toStrict $ pShow res)) []
+    log passes (Debug Rename (Just $ prettyRenamer programs) (toStrict $ pShow res)) []
 
     res <- liftEither $ left report $ mapM check programs
-    log (Debug StCheck Nothing (toStrict $ pShow res)) []
+    log passes (Debug StCheck Nothing (toStrict $ pShow res)) []
 
     let defTable =
             Table
@@ -130,25 +135,29 @@ compile files = do
                     case x of
                         (res, warnings) -> do
                             res <- liftEither $ left report res
-                            log (Debug TypeCheck (Just $ pThing res) (toStrict $ pShow res)) (fmap report warnings)
+                            log passes (Debug TypeCheck (Just $ pThing res) (toStrict $ pShow res)) (fmap report warnings)
                             pure res
              in mapM single xs
 
     let collections = fmap collect programs
 
+    liftIO $ Text.putStrLn "=== Collections ===\n"
+    liftIO $ traverse_ print collections
+    liftIO $ Text.putStrLn ""
+
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do
-            log (Debug Core (Just $ prettyCore res) (toStrict $ pShow res)) []
+            log passes (Debug Core (Just $ prettyCore res) (toStrict $ pShow res)) []
             pure res
 
     case fmap assemble res of
         res -> forM res $ \res -> do
-            log (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
+            log passes (Debug Llvm (Just $ llvmOut res) (toStrict $ pShow res)) []
             pure res
 
 
-runCompile :: NonEmpty File -> IO (Either Text (NonEmpty Ir), DebugOutputs)
-runCompile = runWriterT . runExceptT . compile
+runCompile :: Set Pass -> NonEmpty File -> IO (Either Text (NonEmpty Ir), DebugOutputs)
+runCompile passes = runWriterT . runExceptT . compile passes
 
 
 produceAsmFile :: FilePath -> Either Text Ir -> IO FilePath
@@ -200,18 +209,15 @@ linkObjectFiles files out = do
             exitWith (ExitFailure code)
 
 
-produceExecutable :: (HasCallStack) => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
-produceExecutable dumps files out = do
-    (res, debugs) <- runCompile files
+produceExecutable ::
+    (HasCallStack) => Set Pass -> NonEmpty File -> FilePath -> IO FilePath
+produceExecutable passes files out = do
+    (res, _) <- runCompile passes files
     case res of
         Left err -> do
             hPutStrLn stderr err
             exitFailure
         Right prg -> do
-            let debug = showDebugs dumps debugs
-            case debug of
-                "" -> pure ()
-                _ -> hPutStrLn stderr debug
             let buildDir = "build"
             exists <- doesDirectoryExist buildDir
             when exists $ removeDirectoryRecursive buildDir

@@ -16,6 +16,7 @@ data Pass = Parse | Rename | StCheck | TypeCheck | Core | Llvm
 data Options = Options
     { dumps :: Set Pass
     , filepaths :: NonEmpty FilePath
+    , source_dir :: Maybe FilePath
     }
 
 
@@ -23,11 +24,16 @@ cmdlineParser :: IO Options
 cmdlineParser = execParser (info (options <**> helper) fullDesc)
 
 
+pSourceDir :: Parser (Maybe FilePath)
+pSourceDir = optional $ strOption (long "source-dir" <> metavar "PATH")
+
+
 options :: Parser Options
 options = do
     dumps <- pDumps
     filepaths <- pInput
-    pure $ Options {dumps, filepaths}
+    source_dir <- pSourceDir
+    pure $ Options {dumps, filepaths, source_dir}
 
 
 pDumps :: Parser (Set Pass)
@@ -48,4 +54,4 @@ pDumps =
 
 
 pInput :: Parser (NonEmpty FilePath)
-pInput = some1 (argument str (metavar "[FILE...]"))
+pInput = some1 (argument str (metavar "FILE [FILE...]"))
