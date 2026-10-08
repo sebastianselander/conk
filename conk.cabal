@@ -15,10 +15,10 @@ build-type:      Simple
 extra-doc-files: CHANGELOG.md
 
 common warnings
-  ghc-options: -Wall -Wno-name-shadowing
+  ghc-options: -Wall -Wextra -Wno-name-shadowing
 
 common extensions
-  default-extensions: 
+  default-extensions:
     LexicalNegation
     NoImplicitPrelude
     MultilineStrings

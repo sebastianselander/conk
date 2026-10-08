@@ -232,7 +232,7 @@ checkAndinsertConstrutor ::
     (MonadValidate [RnError] m, MonadState Env m, MonadReader Ctx m) => SourceInfo -> Ident -> m ()
 checkAndinsertConstrutor loc name = do
     uses constructors (Map.lookup name) >>= \case
-        Just namespace -> conflictingDefinitionArgument loc name
+        Just _ -> conflictingDefinitionArgument loc name
         Nothing -> do
             namespace <- view namespace
             -- FIXME: This might be incorrect

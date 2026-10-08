@@ -17,7 +17,6 @@ import Relude hiding (Type, fromList, toList)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as Text
-import Prettyprinter qualified as Pretty
 
 import Backend.Core.Types
 import Backend.Llvm.Prelude (globalUnit)
@@ -293,7 +292,7 @@ dsExpr = \case
         ty' <- dsType ty
         returnType <- case ty of
             Tc.TyFun _ _ retty -> dsType retty
-            nonFunTy -> __IMPOSSIBLE__
+            _ -> __IMPOSSIBLE__
         (lambdaBody, expr) <- contextually $ dsExpr body
         modifying
             lifted
@@ -366,7 +365,7 @@ dsPat = \case
 dsType :: (Monad m) => Tc.TypeTc -> m Type
 dsType = \case
     Tc.Type (Mono _) -> pure OpaquePointer -- NOTE: Should be impossible
-    Tc.TypeVar bound _ -> pure OpaquePointer
+    Tc.TypeVar _ _ -> pure OpaquePointer
     Tc.TyCon NoExtField name -> pure (TyCon name)
     Tc.TyLit NoExtField Tc.Unit -> pure Unit
     Tc.TyLit NoExtField Tc.String -> pure (PointerType (I 8))

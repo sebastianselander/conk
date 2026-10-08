@@ -82,7 +82,7 @@ validateCon errName con@(NormalC nm _) = do
                         (VarE $ mkName "$")
                         (Just $ foldl' AppE (ConE (mkName name)) vars)
                 )
-        dispute' =
+        _ =
             InfixE
                 (Just dispute)
                 (VarE $ mkName ">>")

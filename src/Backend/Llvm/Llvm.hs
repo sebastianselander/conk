@@ -357,10 +357,10 @@ i64 = ConstantOperand . LInt Int64 . fromIntegral
 
 derefType :: Type -> Type
 derefType (PointerType ty) = ty
-derefType ty = __IMPOSSIBLE__
+derefType _ = __IMPOSSIBLE__
 
 
 getReturnType :: Type -> Type
 getReturnType = \case
     TyFun _ ty -> ty
-    ty -> __IMPOSSIBLE__
+    _ -> __IMPOSSIBLE__

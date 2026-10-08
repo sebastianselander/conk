@@ -374,10 +374,10 @@ renameType :: (MonadReader Ctx m, MonadValidate [RnError] m) => TyParamList -> T
 renameType typeParams ty = do
     userDefinedTypes <- view userDefinedTypes
     case ty of
-        TyCon loc name -> pure (TyCon NoExtField name)
-        TypeVar loc tyvar -> pure (TypeVar NoExtField tyvar)
-        TyLit loc lit -> pure (TyLit NoExtField lit)
-        TyFun loc args ret -> TyFun NoExtField <$> mapM (renameType typeParams) args <*> renameType typeParams ret
+        TyCon _ name -> pure (TyCon NoExtField name)
+        TypeVar _ tyvar -> pure (TypeVar NoExtField tyvar)
+        TyLit _ lit -> pure (TyLit NoExtField lit)
+        TyFun _ args ret -> TyFun NoExtField <$> mapM (renameType typeParams) args <*> renameType typeParams ret
         Type unresolved@(UnresolvedType loc _)
             | isTypeVar unresolved typeParams -> pure (TypeVar NoExtField (tyVarOf unresolved))
             | Set.member (nameOf unresolved) userDefinedTypes -> pure (TyCon NoExtField (nameOf unresolved))

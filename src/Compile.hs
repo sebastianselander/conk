@@ -8,7 +8,7 @@ module Compile where
 
 import Control.Arrow (left)
 import Control.Monad.Except (liftEither)
-import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
+import Control.Monad.Writer (MonadWriter, WriterT, runWriterT, tell)
 import Data.Foldable1 (foldr1)
 import Data.Text (concat, pack)
 import Data.Text.IO (hPutStrLn)
@@ -17,7 +17,6 @@ import System.Directory.Extra
     ( createDirectory,
       doesDirectoryExist,
       removeDirectoryRecursive,
-      withCurrentDirectory,
     )
 import System.Exit (ExitCode (..))
 import System.FilePath
@@ -53,7 +52,7 @@ import Frontend.Renamer.Rn (rename)
 import Frontend.StatementCheck (check)
 import Frontend.Tc2 (TypeCons (..), getFuns, getTypesAndCons, typecheck)
 import Frontend.Typechecker.Pretty (pThing)
-import Frontend.Typechecker.Types (ProgramTc, Tc)
+import Frontend.Typechecker.Types (ProgramTc)
 import Frontend.Types (Adt (Adt), Def (..), Fn (Fn), Program (Program))
 import Names (Ident (..), Namespace (Namespace), combine)
 import Options (Pass (..))
@@ -140,7 +139,6 @@ compile passes files = do
              in mapM single xs
 
     let _collections = fmap collect programs
-
 
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do
