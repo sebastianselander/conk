@@ -27,6 +27,7 @@ import System.FilePath
       takeBaseName,
       (</>),
     )
+import System.IO (hPrint)
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Text.Pretty.Simple (pShow)
 
@@ -35,6 +36,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text.IO qualified as Text
+import Prettyprinter qualified as Pretty
 
 import Backend.Core.Core (lowerToCore)
 import Backend.Core.Pretty (prettyCore)
@@ -44,7 +46,11 @@ import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
 import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
-import Frontend.MonomorphizerCollector (collect)
+import Frontend.MonomorphizerCollector
+    ( Collection (..),
+      collect,
+      prettyItem,
+    )
 import Frontend.Parser.Parse (parse)
 import Frontend.Parser.Types (Par)
 import Frontend.Renamer.Pretty (prettyRenamer)
@@ -139,6 +145,14 @@ compile passes files = do
              in mapM single xs
 
     let _collections = fmap collect programs
+
+    liftIO
+        $ traverse_
+            ( \collection ->
+                Text.hPutStrLn stderr ("Namespace: " <> show (Pretty.pretty collection.namespace))
+                    >> traverse_ (Text.hPutStrLn stderr . prettyItem) (toList collection.items)
+            )
+            _collections
 
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do

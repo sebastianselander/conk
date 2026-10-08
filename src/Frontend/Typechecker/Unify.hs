@@ -92,7 +92,7 @@ instance TypeOf StmtTc where
 instance TypeOf ExprTc where
     typeOf = \case
         Lit ty _ -> snd ty
-        Var (_, ty, _) _ -> ty
+        Var (_, _, ty, _) _ -> ty
         Prefix ty _ _ -> snd ty
         BinOp ty _ _ _ -> snd ty
         App ty _ _ -> snd ty

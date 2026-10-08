@@ -216,7 +216,7 @@ dsExpr = \case
     Tc.Lit (_info, ty) lit -> do
         lit <- dsLit lit
         named $ typed ty lit
-    Tc.Var (_info, ty, binding) name -> Typed <$> dsType ty <*> pure (Var (dsBound binding) name)
+    Tc.Var (_info, _namespace, ty, binding) name -> Typed <$> dsType ty <*> pure (Var (dsBound binding) name)
     Tc.BinOp (_, ty) l op r -> do
         l <- dsExpr l
         let op' = dsBinOp op

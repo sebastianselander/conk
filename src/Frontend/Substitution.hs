@@ -110,7 +110,7 @@ instance Substitute (Type Tc) where
 instance Substitute (Expr Tc) where
     apply sub expr = case expr of
         Lit _ _ -> expr
-        Var (loc, ty, binding) name -> Var (loc, apply sub ty, binding) name
+        Var (loc, namespace, ty, binding) name -> Var (loc, namespace, apply sub ty, binding) name
         BinOp (loc, ty) l op r -> BinOp (loc, apply sub ty) (apply sub l) op (apply sub r)
         Prefix (loc, ty) op expr -> Prefix (loc, apply sub ty) op (apply sub expr)
         App (loc, ty) l rs -> App (loc, apply sub ty) (apply sub l) (fmap (apply sub) rs)

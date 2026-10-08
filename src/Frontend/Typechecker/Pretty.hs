@@ -4,11 +4,9 @@
 
 module Frontend.Typechecker.Pretty where
 
-import Data.List ((!!))
 import Prettyprinter (Doc, Pretty, (<+>))
 import Relude
 
-import Data.Text qualified as Text
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
 
@@ -182,7 +180,7 @@ prettyExpr7 :: ExprTc -> Doc ann
 prettyExpr7 e@BinOp {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 e@Prefix {} = Pretty.parens (Pretty.pretty e)
 prettyExpr7 (Lit _ lit) = Pretty.pretty lit
-prettyExpr7 (Var (_, ty, _) name) = Pretty.parens $ Pretty.pretty name <> ":" <+> Pretty.pretty ty
+prettyExpr7 (Var (_, _, ty, _) name) = Pretty.parens $ Pretty.pretty name <> ":" <+> Pretty.pretty ty
 prettyExpr7 (App _ l rs) =
     Pretty.pretty l
         <> Pretty.parens (Pretty.concatWith (Pretty.surround Pretty.comma) (fmap Pretty.pretty rs))

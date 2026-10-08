@@ -70,7 +70,7 @@ type PatternTc = Pattern Tc
 type TcInfo = (SourceInfo, TypeTc)
 
 
-type TcInfoBound = (SourceInfo, TypeTc, Boundedness)
+type TcInfoBound = (SourceInfo, Namespace, TypeTc, Boundedness)
 
 
 deriving instance Data ProgramTc

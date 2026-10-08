@@ -28,6 +28,7 @@ common extensions
     OverloadedStrings
     OverloadedRecordDot
     PartialTypeSignatures
+    DuplicateRecordFields
 
 library
   import:           warnings, extensions

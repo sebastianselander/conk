@@ -355,7 +355,7 @@ infer_var loc namespace boundedness name = do
     case boundedness of
         Free; Bound -> do
             (ty, _) <- lookupVar name
-            pure (Sub.empty, Var (loc, ty, boundedness) name)
+            pure (Sub.empty, Var (loc, namespace, ty, boundedness) name)
         Function; Imported -> do
             (polytype, info) <- lookupFun namespace name
             let PolyType tyvars _ = polytype
@@ -365,19 +365,19 @@ infer_var loc namespace boundedness name = do
                 ( Sub.empty
                 , Expr
                     $ TypeApp
-                        (Var (info, ty, boundedness) name)
+                        (Var (info, namespace, ty, boundedness) name)
                         (fmap (Type . Mono . snd) tbl)
                 )
         Constructor -> do
             (polytype, _) <- lookupCon namespace name
             ty <- instantiateTc polytype
-            pure (Sub.empty, Var (loc, ty, boundedness) name)
+            pure (Sub.empty, Var (loc, namespace, ty, boundedness) name)
         Builtin -> do
             builtins <- view (defTable . builtIns)
             case Builtins.lookup namespace name builtins of
                 Just (ty, info) -> do
                     ty <- instantiateTc ty
-                    pure (Sub.empty, Var (info, ty, boundedness) name)
+                    pure (Sub.empty, Var (info, namespace, ty, boundedness) name)
                 _ -> __IMPOSSIBLE__
 
 
@@ -716,7 +716,7 @@ check_pattern pattype currentPattern = case currentPattern of
 hasInfo :: ExprTc -> SourceInfo
 hasInfo = \case
     Lit info _ -> fst info
-    Var (info, _, _) _ -> info
+    Var (info, _, _, _) _ -> info
     Prefix info _ _ -> fst info
     BinOp info _ _ _ -> fst info
     App info _ _ -> fst info
