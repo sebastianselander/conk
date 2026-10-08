@@ -60,6 +60,7 @@ assembleCon index name ty = \case
             ret loaded
         pure [Define ConstructorFn name [] ty instrs]
     Just tys -> do
+        -- NOTE: Can we just inline `mkName`??
         let constructorFun = Ident "mk" <> name
         operands <- mapM (\name -> fmap (LocalReference name) fresh) tys
         let retty = getReturnType ty
@@ -70,7 +71,8 @@ assembleCon index name ty = \case
             store (i64 index) tag
             void $ flip mapWithIndexM operands $ \index argument -> do
                 value <- gep alloced [i32 @Integer 0, i32 @Integer 1, i32 @Integer index]
-                malloced <- malloc (ptr (typeOf argument)) (i64 @Int 10)
+                -- TODO: Do one malloc for all arguments?
+                malloced <- malloc (ptr (typeOf argument)) (i64 (sizeOf (typeOf argument)))
                 -- TODO(sebsel): Is this GEP needed?
                 mallocedPtr <- gep malloced [i32 @Integer 0]
                 store argument mallocedPtr
