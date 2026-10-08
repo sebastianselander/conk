@@ -29,7 +29,7 @@ import Frontend.Types
       SourceInfo,
     )
 import Impossible (__IMPOSSIBLE__)
-import Names (Ident (..), Names, Namespace, existName, insertName)
+import Names (Ident (..), Names, Namespace, existName, insertName, toPythonStyle)
 import Utils (mapWithIndexM)
 
 import Frontend.Typechecker.Types qualified as Tc
@@ -434,7 +434,7 @@ dsLit = \case
     Tc.DoubleLit NoExtField double -> pure $ Constant $ DoubleLit double
     Tc.StringLit NoExtField string -> do
         namespace <- view namespace
-        name <- fresh $ show (Pretty.pretty namespace) <> ".static_string"
+        name <- fresh $ toPythonStyle namespace <> ".static_string"
         modifying staticStrings ((name, ArrayType (Text.length string + 1) (I 8), string <> "\\00") :)
         pure (Var Function name)
     Tc.CharLit NoExtField char -> pure $ Constant $ CharLit char
