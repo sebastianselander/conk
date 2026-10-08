@@ -36,6 +36,7 @@ import Frontend.Builtin qualified as Builtins
 import Frontend.Substitution qualified as Sub
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Table qualified as DefTable
+import Data.Foldable (foldrM)
 
 
 data Env = Env
@@ -701,10 +702,10 @@ check_pattern pattype currentPattern = case currentPattern of
             TyFun _ argtys rettype
                 | length argtys == length pats -> do
                     sub1 <- unify loc pattype rettype
-                    let f (sub1, pats) (expected_type, pat) = do
+                    let f (expected_type, pat) (sub1, pats) = do
                             (sub2, pat) <- check_pattern expected_type pat
                             pure (Sub.compose sub2 sub1, pat : pats)
-                    (sub2, pats) <- foldM f (sub1, []) $ zip argtys pats
+                    (sub2, pats) <- foldrM f (sub1, []) $ zip argtys pats
                     let sub3 = Sub.compose sub2 sub1
                     modifying variables (Map.map (first (apply sub3)))
                     pure (sub3, apply sub3 $ PFunCon (loc, pattype) conName pats)
