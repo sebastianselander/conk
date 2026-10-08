@@ -358,7 +358,7 @@ infer_var loc namespace boundedness name = do
             pure (Sub.empty, Var (loc, ty, boundedness) name)
         Function; Imported -> do
             (polytype, info) <- lookupFun namespace name
-            let PolyType tyvars ty = polytype
+            let PolyType tyvars _ = polytype
             tbl <- traverse (\ty -> (ty,) <$> fresh_mono) tyvars
             let ty = instantiate_with (Map.fromList tbl) polytype
             pure
