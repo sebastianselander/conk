@@ -14,6 +14,7 @@ import Control.Monad (foldM)
 import Control.Monad.Validate (MonadValidate, ValidateT, runValidateT)
 import Control.Monad.Writer (Writer, runWriter)
 import Data.Data (Data)
+import Data.Foldable (foldrM)
 import Relude hiding (Any, Type, intercalate)
 import Relude.Unsafe (fromJust)
 
@@ -36,7 +37,6 @@ import Frontend.Builtin qualified as Builtins
 import Frontend.Substitution qualified as Sub
 import Frontend.Typechecker.Ctx qualified as Ctx
 import Table qualified as DefTable
-import Data.Foldable (foldrM)
 
 
 data Env = Env
@@ -479,7 +479,7 @@ infer_ret loc maybe_expr = do
         Nothing -> do
             sub <- unify loc unit_type return_type
             modifying variables (Map.map (first (apply sub)))
-            pure (sub, Ret (loc, return_type) Nothing)
+            pure (sub, Ret (loc, Any) Nothing)
         Just expr -> do
             (sub, expr) <- check_expr return_type expr
             -- NOTE: Use fresh type var here?
@@ -487,7 +487,7 @@ infer_ret loc maybe_expr = do
             sub1 <- unify (hasInfo expr) return_type (typeOf expr)
             let sub2 = Sub.compose sub1 sub
             modifying variables (Map.map (first (apply sub2)))
-            pure (sub2, apply sub2 $ Ret (loc, return_type) (Just expr))
+            pure (sub2, apply sub2 $ Ret (loc, Any) (Just expr))
 
 
 infer_block ::
