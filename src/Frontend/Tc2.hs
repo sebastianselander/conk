@@ -730,6 +730,7 @@ hasInfo = \case
     Loop info _ -> fst info
     Lam info _ _ -> fst info
     Match info _ _ -> fst info
+    Expr (TypeApp expr _) -> hasInfo expr
 
 
 operatorReturnType :: TypeTc -> BinOp -> TypeTc
