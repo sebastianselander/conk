@@ -27,7 +27,6 @@ import System.FilePath
       takeBaseName,
       (</>),
     )
-import System.IO (hPrint)
 import System.Process.Extra (proc, readCreateProcessWithExitCode)
 import Text.Pretty.Simple (pShow)
 
@@ -48,6 +47,7 @@ import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
 import Frontend.MonomorphizerCollector
     ( Collection (..),
+      Item (..),
       collect,
       prettyItem,
     )
@@ -144,15 +144,24 @@ compile passes files = do
                             pure res
              in mapM single xs
 
-    let _collections = fmap collect programs
+    let collections = fmap collect programs
+    let should_monomorphize_map =
+            Map.fromListWith
+                (<>)
+                [ (item.namespace, [item])
+                | collection <- toList collections
+                , item <- toList collection.items
+                ]
 
+    liftIO $ Text.putStrLn $ toStrict $ pShow should_monomorphize_map
+    liftIO $ putStrLn ""
     liftIO
         $ traverse_
             ( \collection ->
                 Text.hPutStrLn stderr ("Namespace: " <> show (Pretty.pretty collection.namespace))
-                    >> traverse_ (Text.hPutStrLn stderr . prettyItem) (toList collection.items)
+                    >> traverse_ (Text.hPutStrLn stderr . ("  " <>) . prettyItem) (toList collection.items)
             )
-            _collections
+            collections
 
     res <- case fmap (lowerToCore names) programs of
         res -> forM res $ \res -> do

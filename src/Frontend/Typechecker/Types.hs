@@ -212,7 +212,7 @@ type instance XApp Tc = TcInfo
 
 
 -- FIXME: Make this unique to function calls (and perhaps constructors, or make a separate one) and remove Toplevel from boundedness
-data TypeApp = TypeApp ExprTc [TypeTc]
+data TypeApp = TypeApp {expr :: ExprTc, type_args :: [TypeTc], is_polymorphic :: Bool}
     deriving (Data, Show)
 
 

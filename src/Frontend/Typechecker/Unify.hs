@@ -106,7 +106,7 @@ instance TypeOf ExprTc where
         Loop ty _ -> snd ty
         Lam ty _ _ -> snd ty
         Match ty _ _ -> snd ty
-        Expr (TypeApp expr _) -> typeOf expr
+        Expr (TypeApp expr _ _) -> typeOf expr
 
 
 instance TypeOf (Block Tc) where

@@ -37,7 +37,7 @@ prettyItem item =
             )
         <> ":"
         <+> Pretty.pretty item.ty
-        <+> "@"
+        <+> "used at"
         <+> show item.loc
 
 
@@ -48,6 +48,6 @@ collect prg@(Program namespace _) = Collection namespace $ Set.fromList $ listif
 find_type_app :: Expr Tc -> Maybe Item
 find_type_app expr = case expr of
     -- NOTE: Type application on a variable is guaranteed by the typechecker to be a toplevel function
-    Expr (TypeApp (Var (loc, namespace, ty, _) name) type_args) ->
+    Expr (TypeApp (Var (loc, namespace, ty, _) name) type_args True) ->
         Just (Item name namespace ty type_args loc)
     _ -> Nothing

@@ -311,7 +311,7 @@ dsExpr = \case
         matchArms <- dsMatchArms matchArms
         matchArms <- extractCatch loc matchArms
         named $ pure $ Typed ty $ uncurry (Match scrutinee) matchArms
-    Tc.Expr (Tc.TypeApp expr _) -> dsExpr expr
+    Tc.Expr (Tc.TypeApp expr _ _) -> dsExpr expr
 
 
 -- TODO: Really reconsider if this is the logic we want
