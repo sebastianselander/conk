@@ -1,7 +1,7 @@
 import num;
 import str;
+import tell;
 
 def main() {
-    std::printInt(num::two());
-    std::printString(str::hej());
+    tell::tell(num::two(), str::hej());
 }
