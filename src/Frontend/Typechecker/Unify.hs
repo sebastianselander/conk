@@ -54,9 +54,9 @@ unify info ty1 ty2 = case (ty1, ty2) of
         sub2 <- unify info (apply sub1 r1) (apply sub1 r2)
         pure $ Sub.compose sub2 sub1
     (Type (Mono mono), t) ->
-        if occurs mono t then tyExpectedGot' info [ty1] ty2 else pure $ Sub.singleton mono t
+        if occurs mono t then tyExpectedGot' info [ty1] ty2 else pure $ Sub.singleton (Type (Mono mono)) t
     (t, Type (Mono mono)) ->
-        if occurs mono t then tyExpectedGot' info [ty1] ty2 else pure $ Sub.singleton mono t
+        if occurs mono t then tyExpectedGot' info [ty1] ty2 else pure $ Sub.singleton (Type (Mono mono)) t
     (Type AnyX, _) -> pure Sub.empty
     (_, Type AnyX) -> pure Sub.empty
     (TyCon NoExtField name1, TyCon NoExtField name2)
@@ -106,7 +106,7 @@ instance TypeOf ExprTc where
         Loop ty _ -> snd ty
         Lam ty _ _ -> snd ty
         Match ty _ _ -> snd ty
-        Expr (TypeApp expr _ _) -> typeOf expr
+        Expr (TypeApp expr _) -> typeOf expr
 
 
 instance TypeOf (Block Tc) where

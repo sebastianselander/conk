@@ -220,12 +220,13 @@ data Type a
     | Type !(XType a)
 
 
-(~~) :: Type a -> Type a -> Bool
+(~~) :: (Eq (XType a)) => Type a -> Type a -> Bool
 l ~~ r = case (l, r) of
     (TyLit _ left, TyLit _ right) -> left == right
     (TyFun _ largs lret, TyFun _ rargs rret) -> and (zipWith (~~) largs rargs) && lret ~~ rret
     (TyCon _ left, TyCon _ right) -> left == right
     (TypeVar _ left, TypeVar _ right) -> left == right
+    (Type a, Type b) -> a == b
     _ -> False
 
 

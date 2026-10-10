@@ -219,7 +219,7 @@ prettyExpr7 (Match _ scrutinee arms) =
                     )
                 <> Pretty.hardline
             )
-prettyExpr7 (Expr (TypeApp expr ty_args _)) =
+prettyExpr7 (Expr (TypeApp expr ty_args)) =
     Pretty.pretty expr
         <> Pretty.angles
             (Pretty.concatWith (Pretty.surround (Pretty.comma <> Pretty.space)) (fmap Pretty.pretty ty_args))

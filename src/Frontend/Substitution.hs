@@ -13,12 +13,11 @@ import Frontend.Typechecker.Pretty ()
 import Frontend.Typechecker.Types
     ( BlockTc,
       MetaTy (AnyX, Mono),
-      MonoType,
       PolyType (..),
       StmtTc,
       StmtType,
       Tc,
-      TypeApp (TypeApp, is_polymorphic),
+      TypeApp (TypeApp),
       stmtType,
       varType,
     )
@@ -32,11 +31,12 @@ import Frontend.Types
       Pattern (..),
       Stmt (SExpr),
       Type (..),
+      XType,
       (~~),
     )
 
 
-newtype Substitution a = Subst (Map MonoType (Type a))
+newtype Substitution a = Subst (Map (Type a) (Type a))
 
 
 pretty :: Substitution Tc -> Text
@@ -56,18 +56,19 @@ deriving instance Eq (Substitution Tc)
 
 
 empty :: Substitution a
-empty = Subst mempty
+empty = Subst Map.empty
 
 
-singleton :: MonoType -> Type a -> Substitution a
+singleton :: Type a -> Type a -> Substitution a
 singleton tyvar ty = Subst (Map.singleton tyvar ty)
 
 
-lookup :: MonoType -> Substitution a -> Maybe (Type a)
+lookup :: (Ord (Type a)) => Type a -> Substitution a -> Maybe (Type a)
 lookup tyvar (Subst sub) = Map.lookup tyvar sub
 
 
-insert :: MonoType -> Type a -> Substitution a -> Maybe (Substitution a)
+insert ::
+    (Eq (XType a), Ord (Type a)) => Type a -> Type a -> Substitution a -> Maybe (Substitution a)
 insert tyvar ty (Subst sub)
     | Just found <- Map.lookup tyvar sub = if found ~~ ty then Just (Subst sub) else Nothing
     | otherwise = Just (Subst (Map.insert tyvar ty sub))
@@ -85,7 +86,7 @@ compose sub1@(Subst m1) (Subst m2) = Subst $ Map.map (apply sub1) m2 `Map.union`
 
 substitute :: Substitution Tc -> Type Tc -> Type Tc
 substitute sub ty = case ty of
-    Type (Mono mono) -> fromMaybe ty (lookup mono sub)
+    Type (Mono _) -> fromMaybe ty (lookup ty sub)
     TyFun loc args ret -> TyFun loc (fmap (substitute sub) args) (substitute sub ret)
     Type AnyX -> ty
     TypeVar _ _ -> ty
@@ -99,12 +100,12 @@ class Substitute t where
 
 instance Substitute (Type Tc) where
     apply sub ty = case ty of
-        Type (Mono mono) -> fromMaybe ty (lookup mono sub)
-        TyFun loc args ret -> TyFun loc (fmap (substitute sub) args) (substitute sub ret)
-        Type AnyX -> ty
-        TypeVar _ _ -> ty
-        TyLit _ _ -> ty
-        TyCon _ _ -> ty
+        Type (Mono _) -> fromMaybe ty (lookup ty sub)
+        TyFun NoExtField args ret -> fromMaybe (TyFun NoExtField (fmap (apply sub) args) (apply sub ret)) (lookup ty sub)
+        Type AnyX -> fromMaybe ty (lookup ty sub)
+        TypeVar NoExtField _ -> fromMaybe ty (lookup ty sub)
+        TyLit NoExtField _ -> fromMaybe ty (lookup ty sub)
+        TyCon NoExtField _ -> fromMaybe ty (lookup ty sub)
 
 
 instance Substitute (Expr Tc) where
@@ -124,7 +125,7 @@ instance Substitute (Expr Tc) where
         Loop (loc, ty) block -> Loop (loc, apply sub ty) (apply sub block)
         Lam (loc, ty) args body -> Lam (loc, apply sub ty) (fmap (apply sub) args) (apply sub body)
         Match (loc, ty) scrutinee matchArms -> Match (loc, apply sub ty) (apply sub scrutinee) (fmap (apply sub) matchArms)
-        Expr (TypeApp expr type_args is_polymorphic) -> Expr (TypeApp (apply sub expr) (fmap (apply sub) type_args) is_polymorphic)
+        Expr (TypeApp expr type_args) -> Expr (TypeApp (apply sub expr) (fmap (apply sub) type_args))
 
 
 instance Substitute (LamArg Tc) where

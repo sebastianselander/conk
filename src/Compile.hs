@@ -45,6 +45,7 @@ import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types (Ir, updateDecls)
 import Frontend.Builtin (builtins)
 import Frontend.Error (Report (..), TcError, TcWarning)
+import Frontend.Monomorphizer (monomorphize)
 import Frontend.MonomorphizerCollector
     ( Collection (..),
       Item (..),
@@ -153,17 +154,26 @@ compile passes files = do
                 , item <- toList collection.items
                 ]
 
-    liftIO $ Text.putStrLn $ toStrict $ pShow should_monomorphize_map
-    liftIO $ putStrLn ""
-    liftIO
-        $ traverse_
-            ( \collection ->
-                Text.hPutStrLn stderr ("Namespace: " <> show (Pretty.pretty collection.namespace))
-                    >> traverse_ (Text.hPutStrLn stderr . ("  " <>) . prettyItem) (toList collection.items)
-            )
-            collections
+    -- liftIO $ Text.putStrLn $ toStrict $ pShow should_monomorphize_map
+    -- liftIO $ putStrLn ""
+    --
+    -- liftIO
+    --     $ traverse_
+    --         ( \collection ->
+    --             Text.hPutStrLn stderr ("Namespace: " <> show (Pretty.pretty collection.namespace))
+    --                 >> traverse_ (Text.hPutStrLn stderr . ("  " <>) . prettyItem) (toList collection.items)
+    --         )
+    --         collections
+    let programs' =
+            fmap
+                ( \prg@(Program namespace _) ->
+                    monomorphize
+                        prg
+                        (fromMaybe [] (Map.lookup namespace should_monomorphize_map))
+                )
+                programs
 
-    res <- case fmap (lowerToCore names) programs of
+    res <- case fmap (lowerToCore names) programs' of
         res -> forM res $ \res -> do
             log passes (Debug Core (Just $ prettyCore res) (toStrict $ pShow res)) []
             pure res

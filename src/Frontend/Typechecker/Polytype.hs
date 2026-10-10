@@ -61,7 +61,7 @@ generalize ty =
     let (monos, tvars) = find_all_monotypes ty
         generalized_tvars = TyVar <$> tvar_names tvars
         table = zip (Set.toList monos) generalized_tvars
-        subst = Subst $ Map.fromList [(k, TypeVar NoExtField v) | (k, v) <- table]
+        subst = Subst $ Map.fromList [(Type (Mono k), TypeVar NoExtField v) | (k, v) <- table]
      in (PolyType (fmap snd table) $ apply subst ty, subst)
   where
     find_all_monotypes :: Type Tc -> (Set MonoType, Set Ident)

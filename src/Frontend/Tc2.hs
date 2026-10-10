@@ -361,14 +361,18 @@ infer_var loc namespace boundedness name = do
             let PolyType tyvars _ = polytype
             tbl <- traverse (\ty -> (ty,) <$> fresh_mono) tyvars
             let ty = instantiate_with (Map.fromList tbl) polytype
-            pure
-                ( Sub.empty
-                , Expr
-                    $ TypeApp
-                        (Var (loc, namespace, ty, boundedness) name)
-                        (fmap (Type . Mono . snd) tbl)
-                        (not (null tbl)) -- FIXME(sebsel): This is not correct for phantom type parameters
-                )
+            if not (null tbl)
+                then
+                    -- FIXME(sebsel): We don't need to monomorphize phantom parameters
+                    pure
+                        ( Sub.empty
+                        , Expr
+                            $ TypeApp
+                                (Var (loc, namespace, ty, boundedness) name)
+                                (fmap (Type . Mono . snd) tbl)
+                        )
+                else
+                    pure (Sub.empty, Var (loc, namespace, ty, boundedness) name)
         Constructor -> do
             (polytype, _) <- lookupCon namespace name
             ty <- instantiateTc polytype
@@ -731,7 +735,7 @@ hasInfo = \case
     Loop info _ -> fst info
     Lam info _ _ -> fst info
     Match info _ _ -> fst info
-    Expr (TypeApp expr _ _) -> hasInfo expr
+    Expr (TypeApp expr _) -> hasInfo expr
 
 
 operatorReturnType :: TypeTc -> BinOp -> TypeTc
@@ -880,7 +884,7 @@ find_all_breaks e = case e of
     Loop {} -> []
     Lam {} -> []
     Match _ scrutinee arms -> find_all_breaks scrutinee <> concatMap breakArm arms
-    Expr (TypeApp expr _ _) -> find_all_breaks expr
+    Expr (TypeApp expr _) -> find_all_breaks expr
   where
     breakArm :: MatchArm Tc -> [ExprTc]
     breakArm (MatchArm _ _ body) = find_all_breaks body
