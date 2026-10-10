@@ -9,6 +9,8 @@ module Names
       mkNamespace,
       existName,
       getText,
+      append,
+      prepend,
       toPythonStyle,
       insertName,
       getOriginalName',
@@ -72,6 +74,14 @@ instance Pretty Ident where
 
 instance Pretty Namespace where
     pretty (Namespace list) = concatWith (surround "::") $ fmap pretty list
+
+
+append :: Text -> Ident -> Ident
+append suffix (Ident name) = Ident (name <> suffix)
+
+
+prepend :: Text -> Ident -> Ident
+prepend prefix (Ident name) = Ident (prefix <> name)
 
 
 intercalate :: Text -> [Ident] -> Ident
