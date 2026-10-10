@@ -19,16 +19,16 @@ common warnings
 
 common extensions
   default-extensions:
-    LexicalNegation
-    NoImplicitPrelude
-    MultilineStrings
     BlockArguments
-    OrPatterns
-    StrictData
-    OverloadedStrings
-    OverloadedRecordDot
-    PartialTypeSignatures
     DuplicateRecordFields
+    LexicalNegation
+    MultilineStrings
+    NoImplicitPrelude
+    OrPatterns
+    OverloadedRecordDot
+    OverloadedStrings
+    PartialTypeSignatures
+    StrictData
 
 library
   import:           warnings, extensions
@@ -39,51 +39,52 @@ library
     Backend.Core.Pretty
     Backend.Core.Types
     Backend.Llvm.Llvm
+    Backend.Llvm.Lower
     Backend.Llvm.Monad
     Backend.Llvm.Prelude
-    Backend.Llvm.Lower
     Backend.Llvm.Types
     Backend.Types
     Compile
     Frontend.Builtin
-    Frontend.Utils
     Frontend.Error
+    Frontend.Monomorphizer
+    Frontend.Monomorphizer.Monad
+    Frontend.Monomorphizer.Types
+    Frontend.MonomorphizerCollector
     Frontend.Parser.Parse
-    Frontend.Parser.Types
     Frontend.Parser.Pretty
+    Frontend.Parser.Types
     Frontend.Parser.Utils
+    Frontend.Phase
     Frontend.Renamer.Monad
     Frontend.Renamer.Pretty
     Frontend.Renamer.Rn
     Frontend.Renamer.Types
     Frontend.StatementCheck
+    Frontend.Substitution
     Frontend.Tc
     Frontend.Tc2
     Frontend.TH
-    Frontend.Phase
-    Frontend.MonomorphizerCollector
     Frontend.Typechecker.Ctx
+    Frontend.Typechecker.Polytype
     Frontend.Typechecker.Pretty
     Frontend.Typechecker.Types
-    Frontend.Typechecker.Polytype
     Frontend.Typechecker.Unify
-    Frontend.Monomorphizer.Types
-    Frontend.Monomorphizer.Monad
     Frontend.Types
-    Frontend.Substitution
+    Frontend.Utils
+    Impossible
     Names
     Options
     Origin
-    Utils
     Table
-    Impossible
+    Utils
 
   build-depends:
     , base
-    , filepath
     , containers
     , dlist
     , extra
+    , filepath
     , lens
     , megaparsec
     , monad-validate
@@ -105,12 +106,11 @@ executable conk
   main-is:          Main.hs
   build-depends:
     , conk
+    , extra
+    , filepath
     , pretty-simple
     , process
     , relude
-    , filepath
-    , extra
-
 
   hs-source-dirs:   app
   default-language: GHC2024
