@@ -27,7 +27,7 @@ instance Pretty ProgramTc where
 instance Pretty DefTc where
     pretty (DefFn fn) = Pretty.pretty fn
     pretty (DefAdt adt) = Pretty.pretty adt
-    pretty (DefImport import_) = Pretty.pretty import_
+    pretty (DefImport import_) = "import" <+> Pretty.pretty import_
 
 
 instance Pretty ImportTc where
@@ -83,11 +83,17 @@ instance Pretty FnTc where
 instance Pretty BlockTc where
     pretty (Block _ stmts tail) =
         Pretty.braces
-            ( Pretty.concatWith (Pretty.surround Pretty.hardline) (fmap Pretty.pretty stmts)
-                <> maybe Pretty.emptyDoc (\x -> Pretty.hardline <> Pretty.pretty x) tail
-                <> Pretty.hardline
-            )
+            $ Pretty.hardline
+            <> Pretty.indent 4 (Pretty.hcat $ Pretty.punctuate Pretty.hardline (fmap Pretty.pretty stmts))
+            <> Pretty.pretty tail
+            <> Pretty.hardline
 
+
+-- Pretty.braces
+--     ( Pretty.concatWith (Pretty.surround Pretty.hardline) (fmap Pretty.pretty stmts)
+--         <> maybe Pretty.emptyDoc (\x -> Pretty.hardline <> Pretty.pretty x) tail
+--         <> Pretty.hardline
+--     )
 
 instance Pretty DataConCantHappen where
     pretty _ = error "absurd"

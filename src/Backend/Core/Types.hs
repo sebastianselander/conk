@@ -3,13 +3,12 @@ module Backend.Core.Types where
 import Data.Data (Data)
 import Relude hiding (Type)
 
-import Backend.Llvm.Types (Operand (LocalReference))
 import Backend.Types (Type (..))
 import Names (Ident, Namespace)
 import Origin (Origin (..))
 
 
-newtype Program = Program [Def]
+data Program = Program Namespace [Def]
     deriving (Data, Eq, Ord, Show)
 
 

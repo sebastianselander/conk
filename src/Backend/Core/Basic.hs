@@ -130,11 +130,11 @@ basicCore names program@(Tc.Program namespace _) = fst $ run mempty (Ctx (const 
 
 
 dsProgram :: Tc.ProgramTc -> DsM Program
-dsProgram (Tc.Program _ defs) = do
+dsProgram (Tc.Program namespace defs) = do
     defs <- concatMapM dsDef defs
     lifteds <- use lifted
     strings <- use staticStrings
-    pure $ Program $ fmap (uncurry3 StaticString) strings <> toList lifteds <> defs
+    pure $ Program namespace $ fmap (uncurry3 StaticString) strings <> toList lifteds <> defs
 
 
 isMain :: Tc.FnTc -> Bool

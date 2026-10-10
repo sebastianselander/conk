@@ -2,24 +2,24 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
+
 module Frontend.Monomorphizer where
 
 import Control.Monad (foldM)
 import Data.Either.Extra (fromEither)
-import Data.Text.Lazy (unpack)
+import Data.Generics (everywhere, mkT)
 import Relude hiding (Type)
-import Text.Pretty.Simple (pShow)
 
 import Data.Map qualified as Map
 import Prettyprinter qualified as Pretty
 
 import Frontend.MonomorphizerCollector (Item (..))
 import Frontend.Substitution (Substitution (Subst), apply)
-import Frontend.Typechecker.Polytype (instantiate_with, replaceTyVars)
-import Frontend.Typechecker.Types (Tc)
+import Frontend.Typechecker.Types (Tc, TypeApp (TypeApp))
 import Frontend.Types
     ( Arg (Arg),
       Def (DefFn),
+      Expr (Expr, Var),
       Fn (Fn),
       NoExtField (NoExtField),
       Program (Program),
@@ -28,44 +28,82 @@ import Frontend.Types
       toList,
     )
 import Impossible (__IMPOSSIBLE__)
-import Names (Ident (Ident))
+import Names (Ident)
 
 import Names qualified
 
 
-monomorphize :: Program Tc -> [Item] -> Program Tc
-monomorphize prg items = foldl' insert_mono_fn prg (deduplicate items)
+type RenameTable = Map (Ident, [Type Tc]) Ident
+
+
+monomorphize :: Program Tc -> [Item] -> (Program Tc, RenameTable)
+monomorphize prg items = runState (foldM insert_mono_fn prg (deduplicate items)) Map.empty
+
+
+-- FIXME(sebsel): Apply rename to imports too
+apply_rename :: RenameTable -> Program Tc -> Program Tc
+apply_rename tbl = everywhere (mkT (rename tbl))
+
+
+rename :: RenameTable -> Expr Tc -> Expr Tc
+rename tbl expr = case expr of
+    Expr (TypeApp (Var (loc, namespace, ty, bind) name) type_args) ->
+        Expr
+            ( TypeApp
+                (Var (loc, namespace, ty, bind) (fromMaybe name (Map.lookup (name, type_args) tbl)))
+                type_args
+            )
+    _ -> expr
+
+
+make_mono_name ::
+    -- | Type arguments
+    [Type Tc] ->
+    -- | Original name
+    Ident ->
+    -- \| New name
+    Ident
+make_mono_name type_args =
+    Names.prepend "\""
+        . Names.append
+            ( show
+                ( Pretty.angles
+                    ( Pretty.concatWith
+                        (Pretty.surround Pretty.comma)
+                        (fmap Pretty.pretty type_args)
+                    )
+                    <> "\""
+                )
+            )
 
 
 -- We can optimize this by grouping items by the function they are monomorphizing.
-insert_mono_fn :: Program Tc -> Item -> Program Tc
-insert_mono_fn (Program namespace defs) item = Program namespace (DefFn mono_fn : defs)
+insert_mono_fn ::
+    (MonadState RenameTable m) => Program Tc -> Item -> m (Program Tc)
+insert_mono_fn (Program namespace defs) item = do
+    fn <- mono_fn
+    pure (Program namespace (DefFn fn : defs))
   where
     Fn NoExtField original_name typaramlist args original_type body =
         fromMaybe __IMPOSSIBLE__ (find_fn item.name defs)
     sub =
         Subst
-            $ Map.fromList (zip (fmap (TypeVar NoExtField) (Frontend.Types.toList typaramlist)) item.type_args)
-    mono_fn =
-        Fn
-            NoExtField
-            ( Names.prepend "\""
-                $ Names.append
-                    ( show
-                        ( Pretty.angles
-                            ( Pretty.concatWith
-                                (Pretty.surround Pretty.comma)
-                                (fmap Pretty.pretty item.type_args)
-                            )
-                            <> "\""
-                        )
-                    )
-                    original_name
-            )
-            emptyTyParamList
-            (fmap (\(Arg _ name ty) -> Arg NoExtField name (apply sub ty)) args)
-            (apply sub original_type)
-            (apply sub body)
+            $ Map.fromList
+                ( zip
+                    (fmap (TypeVar NoExtField) (Frontend.Types.toList typaramlist))
+                    item.type_args
+                )
+    name = make_mono_name item.type_args original_name
+    mono_fn = do
+        modify (Map.insert (original_name, item.type_args) name)
+        pure
+            $ Fn
+                NoExtField
+                name
+                emptyTyParamList
+                (fmap (\(Arg _ name ty) -> Arg NoExtField name (apply sub ty)) args)
+                (apply sub original_type)
+                (apply sub body)
 
 
 find_fn ::
