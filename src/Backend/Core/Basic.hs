@@ -173,10 +173,10 @@ mkConstructorFunction :: Int -> Tc.ConstructorTc -> DsM Def
 mkConstructorFunction n = \case
     Tc.EnumCons (_loc, ty) name -> do
         modifying constructorIndex (Map.insert name n)
-        Con n name <$> dsType ty <*> pure Nothing
+        Con n name <$> dsType ty <*> pure []
     Tc.FunCons (_loc, ty) name tys -> do
         modifying constructorIndex (Map.insert name n)
-        Con n name <$> dsType ty <*> Just <$> mapM dsType tys
+        Con n name <$> dsType ty <*> mapM dsType tys
 
 constructorAllocSize :: (Monad m) => [Tc.ConstructorTc] -> m Int
 constructorAllocSize [] = pure 0

@@ -93,7 +93,7 @@ pDef (Con index name ty arguments) =
     show index
         <> "#"
         <> pretty name.name
-        <> maybe "" (\xs -> parens (concatWith (surround (comma <> space)) $ fmap pType xs)) arguments
+        <> parens (concatWith (surround (comma <> space)) $ fmap pType arguments)
         <> ":"
         <+> pType ty
 pDef (StaticString name ty str) = "const" <+> pretty name.name <> ":" <+> pType ty <+> "=" <+> pretty str

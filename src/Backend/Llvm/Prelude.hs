@@ -10,24 +10,30 @@ import Relude hiding (exitFailure, exitSuccess)
 import Prettyprinter qualified as Pretty
 
 import Backend.Llvm.Lower (llvmOut)
-import Backend.Llvm.Types (Definition (..), Ellipsis (NoEllipsis))
-import Backend.Types (Type (I, OpaquePointer, PointerType))
+import Backend.Llvm.Types
+    ( Constant (GlobalReference),
+      Definition (..),
+      Ellipsis (NoEllipsis),
+      Operand (ConstantOperand),
+    )
+import Backend.Types (Type (..))
 import Names (ExplicitName (..), Ident (Ident), Namespace (Namespace))
 
-prelude :: ([Definition], Text)
+prelude :: ([((ExplicitName, Operand), Definition)], Text)
 prelude =
     second (prologue <>)
         $ foldl'
-            (\(decls, acc) (decl, body) -> (decl : decls, acc <> "\n" <> addTxt decl body))
+            (\(decls, acc) ((operand, decl), body) -> ((operand, decl) : decls, acc <> "\n" <> addTxt decl body))
             ([], "")
-        $ fmap
-            (\(_, b, c) -> (b, c))
-            [ printString
-            , printChar
-            , exitSuccess
-            , exitFailure
-            , printInt
-            ]
+        $ [ ((a, b), c)
+          | (a, b, c) <-
+                [ printString
+                , printChar
+                , exitSuccess
+                , exitFailure
+                , printInt
+                ]
+          ]
   where
     addTxt decl Nothing = llvmOut decl
     addTxt _ (Just body) = body
@@ -49,11 +55,13 @@ declare ptr @malloc(i64)
 globalUnit :: Text
 globalUnit = "$internal_global_unit"
 
-printString :: (ExplicitName, Definition, Maybe Text)
+printString :: ((ExplicitName, Operand), Definition, Maybe Text)
 printString =
     let ename = EName (Namespace $ "std" :| []) (Ident name) (Ident name)
-     in ( ename
-        , Declare (I 1) ename [OpaquePointer, PointerType (I 8)] NoEllipsis
+        args = [OpaquePointer, PointerType (I 8)]
+        retty = I 1
+     in ( (ename, ConstantOperand (GlobalReference (TyFun args retty) ename))
+        , Declare retty ename args NoEllipsis
         , Just
             [i|
 @snl = internal constant [3 x i8] c"%s\\00"
@@ -67,11 +75,13 @@ define i1 @#{Pretty.pretty ename}(i8* %x) {
   where
     name = "printString"
 
-printChar :: (ExplicitName, Definition, Maybe Text)
+printChar :: ((ExplicitName, Operand), Definition, Maybe Text)
 printChar =
     let ename = EName (Namespace $ "std" :| []) (Ident name) (Ident name)
-     in ( ename
-        , Declare (I 1) ename [OpaquePointer, PointerType (I 8)] NoEllipsis
+        args = [OpaquePointer, PointerType (I 8)]
+        retty = I 1
+     in ( (ename, ConstantOperand (GlobalReference (TyFun args retty) ename))
+        , Declare retty ename args NoEllipsis
         , Just
             [i|
 @cnl = internal constant [3 x i8] c"%c\\00"
@@ -85,11 +95,13 @@ define i1 @#{Pretty.pretty ename}(i8 %x) {
   where
     name = "printChar"
 
-exitSuccess :: (ExplicitName, Definition, Maybe Text)
+exitSuccess :: ((ExplicitName, Operand), Definition, Maybe Text)
 exitSuccess =
     let ename = EName (Namespace $ "std" :| []) (Ident name) (Ident name)
-     in ( ename
-        , Declare (I 1) ename [] NoEllipsis
+        args = []
+        retty = I 1
+     in ( (ename, ConstantOperand (GlobalReference (TyFun args retty) ename))
+        , Declare retty ename args NoEllipsis
         , Just
             [i|
 define i1 @#{Pretty.pretty ename}() {
@@ -101,11 +113,13 @@ define i1 @#{Pretty.pretty ename}() {
   where
     name = "exit_success"
 
-exitFailure :: (ExplicitName, Definition, Maybe Text)
+exitFailure :: ((ExplicitName, Operand), Definition, Maybe Text)
 exitFailure =
     let ename = EName (Namespace $ "std" :| []) (Ident name) (Ident name)
-     in ( ename
-        , Declare (I 1) ename [] NoEllipsis
+        args = []
+        retty = I 1
+     in ( (ename, ConstantOperand (GlobalReference (TyFun args retty) ename))
+        , Declare retty ename args NoEllipsis
         , Just
             [i|
 define i1 @#{Pretty.pretty ename}() {
@@ -117,11 +131,13 @@ define i1 @#{Pretty.pretty ename}() {
   where
     name = "exit_failure"
 
-printInt :: (ExplicitName, Definition, Maybe Text)
+printInt :: ((ExplicitName, Operand), Definition, Maybe Text)
 printInt =
     let ename = EName (Namespace $ "std" :| []) (Ident name) (Ident name)
-     in ( ename
-        , Declare (I 1) ename [OpaquePointer, I 8] NoEllipsis
+        args = [OpaquePointer, I 8]
+        retty = I 1
+     in ( (ename, ConstantOperand (GlobalReference (TyFun args retty) ename))
+        , Declare retty ename args NoEllipsis
         , Just
             [i|
 @dnl = internal constant [3 x i8] c"%d\\00"

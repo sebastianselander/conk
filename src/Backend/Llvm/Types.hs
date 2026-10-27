@@ -10,6 +10,8 @@ import Backend.Types (Type (..))
 import Names (ExplicitName)
 import Origin
 
+import Backend.Core.Types qualified as Core
+
 newtype Module = Module {_decls :: [Definition]}
     deriving (Show)
 
@@ -116,6 +118,10 @@ data Named a = Named ExplicitName a | Nameless a
 
 class Typed a where
     typeOf :: a -> Type
+
+instance Typed Core.Arg where
+    typeOf (Core.Arg _ ty) = ty
+    typeOf (Core.EnvArg _ ty) = ty
 
 instance Typed Operand where
     typeOf = \case

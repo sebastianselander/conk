@@ -6,7 +6,7 @@ module Backend.Types where
 import Data.Data (Data)
 import Relude hiding (Type)
 
-import Names (ExplicitName, Ident)
+import Names (ExplicitName)
 
 data Type
     = I Int

@@ -1,6 +1,6 @@
 def main () {
     let x = 123;
-    // foo(x);
+    foo(x);
 }
 
 def foo(x: int) -> int {

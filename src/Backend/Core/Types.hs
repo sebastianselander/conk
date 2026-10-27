@@ -19,7 +19,7 @@ data Def
     | Main Namespace [TyExpr]
     | StaticString ExplicitName Type Text
     | TypeSyn ExplicitName Type
-    | Con Int ExplicitName Type (Maybe [Type])
+    | Con Int ExplicitName Type [Type]
     deriving (Data, Eq, Ord, Show)
 
 data Arg = Arg ExplicitName Type | EnvArg Namespace Type

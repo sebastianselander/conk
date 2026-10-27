@@ -144,7 +144,7 @@ runCompile passes = runWriterT . runExceptT . compile passes
 
 produceAsmFile :: FilePath -> Either Text Llvm.Module -> IO FilePath
 produceAsmFile asmFilename ir = do
-    ir <- pure $ fmap (Llvm.updateDecls (fst prelude <>)) ir
+    ir <- pure $ fmap (Llvm.updateDecls (fmap snd (fst prelude) <>)) ir
     let llFile = "./build/" <> replaceExtension asmFilename "ll"
     createDirectoryIfMissing True (takeDirectory llFile)
     case ir of

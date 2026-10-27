@@ -6,7 +6,7 @@ module Backend.Llvm.Llvm where
 import Control.Lens.Getter (view)
 import Control.Lens.Setter (locally)
 import Control.Monad.Extra (concatMapM)
-import Data.Tuple.Extra (fst3)
+import Data.Tuple.Extra (fst3, snd3)
 import Relude hiding (Type, and, div, exitFailure, null, or, rem)
 
 import Data.List.NonEmpty qualified as NonEmpty
@@ -51,9 +51,9 @@ assembleDecl (Core.Con index name ty tyArgs) = do
     clearBlocks
     assembleCon index name ty tyArgs
 
-assembleCon :: Int -> ExplicitName -> Type -> Maybe [Type] -> IRBuilder [Definition]
+assembleCon :: Int -> ExplicitName -> Type -> [Type] -> IRBuilder [Definition]
 assembleCon index name ty = \case
-    Nothing -> do
+    [] -> do
         name' <- fresh
         alloced <- alloca name' ty
         store (struct [LInt Int64 (fromIntegral index)]) alloced
@@ -62,10 +62,10 @@ assembleCon index name ty = \case
         emitBlock
         blocks <- getBlocks
         pure [Function Origin.ConstructorFn name [] ty blocks]
-    Just tys -> do
+    tys -> do
         -- NOTE: Can we just inline `mkName`??
         let constructorFun = name {name = Ident "mk" <> name.name}
-        operands <- mapM (\name -> fmap (LocalReference name) fresh) tys
+        operands <- mapM (\ty -> fmap (LocalReference ty) fresh) tys
         let retty = getReturnType ty
         name' <- fresh
         alloced <- alloca name' retty
@@ -298,12 +298,12 @@ assembleExpr (Core.Typed taggedType expr) =
             void
                 $ call
                     (I 1)
-                    (global (TyFun [opaquePtr, ptr Char] Unit) (fst3 printString))
+                    (global (TyFun [opaquePtr, ptr Char] Unit) (fst $ fst3 printString))
                     [constant (LNull opaquePtr), global opaquePtr var]
             void
                 $ call
                     (I 1)
-                    (global (TyFun [] Void) (fst3 exitFailure))
+                    (global (TyFun [] Void) (fst $ fst3 exitFailure))
                     []
             pure (poison taggedType)
 

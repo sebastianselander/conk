@@ -1,31 +1,39 @@
 module Backend.Llvm.Llvm2 where
 
 import Data.DList (DList, snoc)
+import Data.Maybe (fromJust)
 import Relude hiding (Type, and, div, or, rem)
+import Text.Pretty.Simple (pShow)
 
 import Data.Map qualified as Map
+import Data.Text.IO qualified as Text
+import Prettyprinter qualified as Pretty
 
+import Backend.Core.Pretty (pExpr)
 import Backend.Llvm.Monad (entryLabel)
+import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types
     ( ArithOp (..),
       BasicBlock,
       CmpOp (..),
       Constant (..),
       Definition (..),
+      Ellipsis (NoEllipsis),
       Instruction (..),
       Label (L),
       Module (..),
       Named (..),
       Operand (..),
       PartialBlock (..),
-      Terminator (Jump, Ret),
+      Terminator (Br, Jump, Ret),
       emptyPartialBlock,
       finalizePartialBlock,
       typeOf,
     )
-import Backend.Types (Type (..), ptr)
+import Backend.Types (Type (..), ptr, sizeOf)
 import Impossible (__IMPOSSIBLE__)
 import Names (ExplicitName (..), Ident (..), Namespace)
+import Utils (mapWithIndexM)
 
 import Backend.Core.Types qualified as Core
 import Origin qualified
@@ -34,26 +42,29 @@ type Bindings = Map ExplicitName Operand
 
 data IRState = IRState
     { builderBlock :: Maybe PartialBlock
+    , blocks :: DList BasicBlock
     , bindings :: Bindings
     , nameCounter :: Int
     , namespace :: Namespace
     }
 
-emptyIRState :: Namespace -> IRState
-emptyIRState namespace =
+emptyIRState :: Namespace -> Bindings -> IRState
+emptyIRState namespace bindings =
     IRState
         { builderBlock = Nothing
-        , bindings = mempty
+        , blocks = mempty
+        , bindings = bindings
         , nameCounter = 0
         , namespace = namespace
         }
 
-type IRBuilder a = StateT (DList BasicBlock) (ReaderT (IORef IRState) IO) a
+type IRBuilder a = (ReaderT (IORef IRState) IO) a
 
-lookupBinding :: ExplicitName -> IRBuilder Operand
+lookupBinding :: (HasCallStack) => ExplicitName -> IRBuilder Operand
 lookupBinding name = do
     ref <- ask
-    fromMaybe __IMPOSSIBLE__ . Map.lookup name . bindings <$> readIORef ref
+    op <- Map.lookup name . bindings <$> readIORef ref
+    pure $ fromMaybe (error $ "Could not find: " <> show name) op
 
 insertBinding :: ExplicitName -> Operand -> IRBuilder ()
 insertBinding name operand = do
@@ -64,10 +75,38 @@ assemble :: Core.Program -> IO (NonEmpty Module)
 assemble (Core.Program modules) = traverse assembleModule modules
 
 assembleModule :: Core.Module -> IO Module
-assembleModule (Core.Module namespace defs) = do
-    state <- newIORef (emptyIRState namespace)
-    defs <- runReaderT (evalStateT (traverse assembleDefinition defs) mempty) state
+assembleModule mod@(Core.Module namespace defs) = do
+    let bindings = createBindings mod
+    Text.putStrLn $ toStrict $ pShow bindings
+    state <- newIORef (emptyIRState namespace bindings)
+    defs <- runReaderT (traverse assembleDefinition defs) state
     pure $ Module defs
+
+withBlock :: Label -> IRBuilder (Terminator, b) -> IRBuilder (DList BasicBlock, b)
+withBlock lbl action = do
+    ref <- ask
+    state <- readIORef ref
+    tmpRef <- newIORef (state {builderBlock = Just (emptyPartialBlock lbl), blocks = mempty})
+    local (const tmpRef) do
+        (term, b) <- action
+        state <- readIORef tmpRef
+        let bb = finalizePartialBlock (Nameless term) (fromJust state.builderBlock)
+        pure (state.blocks `snoc` bb, b)
+
+createBindings :: Core.Module -> Bindings
+createBindings (Core.Module namespace defs) = foldr get preludeBindings defs
+  where
+    -- preludeBindings :: Bindings
+    preludeBindings = Map.fromList $ fst <$> fst prelude
+    get :: Core.Def -> Bindings -> Bindings
+    get def bindings = case def of
+        Core.Decl _ ty name _ -> Map.insert name (ConstantOperand (GlobalReference ty name)) bindings
+        Core.Fn _ name args retTy _ ->
+            Map.insert name (ConstantOperand (GlobalReference (TyFun (fmap typeOf args) retTy) name)) bindings
+        Core.Main _ _ -> bindings
+        Core.StaticString name ty _ -> Map.insert name (ConstantOperand (GlobalReference OpaquePointer name)) bindings
+        Core.TypeSyn _ _ -> undefined
+        Core.Con _ name ty _ -> Map.insert name (ConstantOperand (GlobalReference ty name)) bindings
 
 assembleDefinition :: Core.Def -> IRBuilder Definition
 assembleDefinition def = case def of
@@ -81,11 +120,41 @@ assembleDefinition def = case def of
         let name = EName namespace "main" "main"
         blocks <- assembleExpressions block
         pure (Function Origin.Function name [] (I 1) blocks)
-    _ -> error "TODO"
+    Core.Decl namespace ty name args -> pure (Declare ty name args NoEllipsis)
+    Core.StaticString name ty txt -> pure (GlobalString name ty txt)
+    Core.TypeSyn name ty -> pure (TypeDefinition name ty)
+    Core.Con index name ty args -> assembleConstructor index name ty args
+
+assembleConstructor :: Int -> ExplicitName -> Type -> [Type] -> IRBuilder Definition
+assembleConstructor index name ty args = do
+    (blocks, (args, retTy)) <- withBlock entryLabel $ do
+        args <- mapM (\ty -> LocalReference ty <$> fresh) args
+        let retTy = getReturnType ty
+        name' <- fresh
+        returnOperand <- alloca name' retTy
+        tag <- gep returnOperand [i32 @Int 0, i32 @Int 0]
+        store (i64 index) tag
+        void $ flip mapWithIndexM args $ \index argument -> do
+            value <- gep returnOperand [i32 @Integer 0, i32 @Integer 1, i32 @Integer index]
+            -- TODO: Do one malloc for all arguments?
+            malloced <- malloc (ptr (typeOf argument)) (i64 (sizeOf (typeOf argument)))
+            -- TODO(sebsel): Is this GEP needed?
+            mallocedPtr <- gep malloced [i32 @Integer 0]
+            store argument mallocedPtr
+            store malloced value
+        struct <- load returnOperand
+        term <- ret struct
+        pure (term, (args, retTy))
+    pure (Function Origin.ConstructorFn name args retTy (toList blocks))
 
 assembleArgument :: Core.Arg -> IRBuilder Operand
 assembleArgument (Core.Arg name ty) = do
-    pure (LocalReference ty name)
+    let newName = name {name = mkArgName name.name}
+    let arg = LocalReference ty newName
+    operand <- alloca name ty
+    store arg operand
+    insertBinding name operand
+    pure arg
 assembleArgument (Core.EnvArg namespace ty) = pure (LocalReference ty (EName namespace env env))
   where
     env = Ident "env"
@@ -95,12 +164,11 @@ assembleExpressions exprs = do
     local id $ do
         traverse_ assembleExpression exprs
         ref <- ask
-        blocks <- get
         state <- readIORef ref
         let block = finalizePartialBlock (Nameless (Ret Nothing)) <$> state.builderBlock
         case block of
-            Nothing -> pure (toList blocks)
-            Just block -> pure (toList $ blocks `snoc` block)
+            Nothing -> pure (toList state.blocks)
+            Just block -> pure (toList $ state.blocks `snoc` block)
 
 openBlock :: Label -> IRBuilder ()
 openBlock lbl = do
@@ -122,15 +190,25 @@ emitBlock :: IRBuilder ()
 emitBlock = do
     ref <- ask
     state <- readIORef ref
-    modify (`snoc` finalizePartialBlock (Nameless $ Ret Nothing) state.partialBlock)
+    let state' =
+            state
+                { blocks =
+                    maybe
+                        state.blocks
+                        (\block -> state.blocks `snoc` finalizePartialBlock (Nameless $ Ret Nothing) block)
+                        state.builderBlock
+                }
+    writeIORef ref state'
 
-assembleExpression :: Core.TyExpr -> IRBuilder Operand
+assembleExpression :: (HasCallStack) => Core.TyExpr -> IRBuilder Operand
 assembleExpression (Core.Typed ty expr) =
     -- To ensure we're always inside a block
     currentBlock >> case expr of
         Core.Constant lit -> do
             pure (assembleLiteral lit)
-        Core.Var binding name -> lookupBinding name
+        Core.Var binding name -> do
+            liftIO $ print name.name
+            lookupBinding name
         Core.BinOp leftExpr operator rightExpr -> do
             leftExpr <- assembleExpression leftExpr
             rightExpr <- assembleExpression rightExpr
@@ -141,7 +219,11 @@ assembleExpression (Core.Typed ty expr) =
         Core.PrefixOp Core.Ref expr -> undefined
         Core.PrefixOp Core.Not expr -> undefined
         Core.PrefixOp Core.Neg expr -> undefined
-        Core.App appExpr argExprs -> undefined
+        Core.App appExpr argExprs -> do
+            liftIO $ print (pExpr (Core.Typed ty expr))
+            app <- assembleExpression appExpr
+            args <- mapM assembleExpression argExprs
+            call ty app args
         Core.Let name varType Nothing -> do
             operand <- alloca name varType
             insertBinding name operand
@@ -153,14 +235,32 @@ assembleExpression (Core.Typed ty expr) =
             () <- store value operand
             pure operand
         Core.DerefAss name varType expr -> undefined
-        Core.Ass name varType expr -> undefined
+        Core.Ass name varType expr -> do
+            expr <- assembleExpression expr
+            operand <- lookupBinding name
+            store expr operand
+            unit
         Core.Return expr -> do
             operand <- assembleExpression expr
             v <- load operand
             res <- ret v
             pure (poison (typeOf v))
         Core.Break -> undefined
-        Core.If condition trueBlk falseBlk -> undefined
+        Core.If condition trueBlk falseBlk -> do
+            let true = L "if_true"
+            let false = L "if_false"
+            let end = L "if_cont"
+            condition <- assembleExpression condition
+            condition <- load condition
+            _ <- br condition true (maybe end (const false) falseBlk)
+            emitBlockStart true
+            mapM_ assembleExpression trueBlk
+            _ <- jump end
+            emitBlockStart false
+            maybe (pure ()) (mapM_ assembleExpression) falseBlk
+            _ <- jump end
+            emitBlockStart end
+            unit -- hacky
         Core.While condition blk -> do
             let start = L "while_start"
             let continue = L "while_continue"
@@ -339,8 +439,59 @@ load operand = LocalReference retty <$> named (Load operand)
         PointerType ty -> ty
         _ -> error "Cannot load non-pointer operand"
 
+call :: Type -> Operand -> [Operand] -> IRBuilder Operand
+call ty function args = do
+    name <- fresh
+    operand <- alloca name ty
+    name <- named (Call ty function args)
+    store (LocalReference ty name) operand
+    pure operand
+
 poison :: Type -> Operand
 poison = ConstantOperand . Poison
+
+mkArgName :: Ident -> Ident
+mkArgName (Ident name) = Ident $ name <> ".arg"
+
+getReturnType :: Type -> Type
+getReturnType = \case
+    TyFun _ ty -> ty
+    _ -> __IMPOSSIBLE__
+
+i32 :: (Integral a) => a -> Operand
+i32 = ConstantOperand . LInt (I 32) . fromIntegral
+
+i64 :: (Integral a) => a -> Operand
+i64 = ConstantOperand . LInt (I 32) . fromIntegral
+
+--
+
+-- | Does not work correctly for structure if gep is used nested
+gep :: Operand -> [Operand] -> IRBuilder Operand
+gep op ops = LocalReference (gepType (typeOf op) ops) <$> named (GetElementPtr op ops)
+
+gepType :: Type -> [Operand] -> Type
+gepType ty [] = ptr ty
+gepType OpaquePointer _ = OpaquePointer
+gepType (PointerType ty) (_ : is) = gepType ty is
+gepType (StructType ty) ((ConstantOperand (LInt (I 32) n) : is)) = case maybeAt (fromIntegral n) ty of
+    Nothing -> __IMPOSSIBLE__
+    Just ty -> gepType ty is
+gepType (StructType _ty) (i : _) = __IMPOSSIBLE__
+gepType (TyCon _) _ = OpaquePointer
+gepType ty (_ : _) = __IMPOSSIBLE__
+
+malloc :: Type -> Operand -> IRBuilder Operand
+malloc ty operand = do
+    name <- fresh
+    emitInstruction $ Named name (Malloc operand)
+    pure $ LocalReference ty name
+
+br :: Operand -> Label -> Label -> IRBuilder Terminator
+br operand leftLbl rightLbl = emitTerminator (Br operand leftLbl rightLbl)
+
+unit :: (Monad m) => m Operand
+unit = pure $ ConstantOperand LUnit
 
 class Value a where
     value :: a -> Either Terminator Operand
