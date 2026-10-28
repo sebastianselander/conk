@@ -40,7 +40,7 @@ newtype DsM a = DsM {runDsm :: StateT Env (Reader Ctx) a}
     deriving (Applicative, Functor, Monad, MonadReader Ctx, MonadState Env)
 
 data Env = Env
-    { _expressions :: DList TyExpr
+    { _statements :: DList Statement
     , _nameCounter :: Int
     , _lifted :: DList Def
     , _staticStrings :: [(ExplicitName, Type, Text)]
@@ -65,17 +65,17 @@ basicCore (Tc.Program NoExtField mods) = Program $ fmap coreModule mods
 run :: Map ExplicitName Int -> Ctx -> Int -> Set Ident -> DsM a -> (a, Env)
 run cons f n names = flip runReader f . flip runStateT (Env mempty n mempty mempty cons names) . runDsm
 
-emit :: TyExpr -> DsM ()
-emit expr = modifying expressions (`snoc` expr)
+emit :: Statement -> DsM ()
+emit stmt = modifying statements (`snoc` stmt)
 
-emits :: [TyExpr] -> DsM ()
-emits = mapM_ emit
+emits :: Block -> DsM ()
+emits (Block stmts) = mapM_ emit stmts
 
 named :: DsM TyExpr -> DsM TyExpr
 named tyExpr = do
     (Typed ty e) <- tyExpr
     name <- fresh "named"
-    emit $ Typed Unit $ Let name ty (Just (Typed ty e))
+    emit $ Let name ty (Just (Typed ty e))
     pure (Typed ty (Var Bound name))
 
 unitVarible :: DsM TyExpr
@@ -87,20 +87,20 @@ unitGlobalName namespace = EName namespace (Ident globalUnit) (Ident globalUnit)
 unitGlobalVariable :: Namespace -> DsM TyExpr
 unitGlobalVariable namespace = pure $ Typed Unit (Var GlobalConstant (unitGlobalName namespace))
 
-unnamed :: DsM TyExpr -> DsM ()
-unnamed thing = do
-    expr <- thing
-    emit expr
+unnamed :: DsM Statement -> DsM ()
+unnamed action = do
+    statement <- action
+    emit statement
     pure ()
 
 declare :: Type -> DsM ExplicitName
 declare (I 1) = do
     name <- fresh "declare"
-    emit $ Typed Unit $ Let name Unit (Just unit)
+    emit $ Let name Unit (Just unit)
     pure name
 declare ty = do
     name <- fresh "declare"
-    emit $ Typed Unit $ Let name ty Nothing
+    emit $ Let name ty Nothing
     pure name
 
 fresh :: Text -> DsM ExplicitName
@@ -141,16 +141,18 @@ dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info
             mapM_ dsStmt stmts
             tail <- dsExpr tail
             if isMain def
-                then void (unnamed (pure tail))
-                else void $ unnamed $ pure $ Typed returnType (Return tail)
-    emits <- use expressions
-    assign expressions mempty
+                then void (unnamed (pure (Expr tail)))
+                else void $ unnamed $ pure $ Return tail
+    emits <- use statements
+    assign statements mempty
     namespace <- view namespace
     if isMain def
-        then pure $ Main namespace (toList emits)
+        then pure $ Main namespace (Block $ toList emits)
         else case returnType of
-            (I 1) -> pure $ Fn Origin.Function name args returnType (toList $ emits `snoc` Typed (I 1) (Return unit))
-            _ -> pure $ Fn Origin.Function name args returnType (toList emits)
+            (I 1) ->
+                pure
+                    $ Fn Origin.Function name args returnType (Block $ toList $ emits `snoc` Return unit)
+            _ -> pure $ Fn Origin.Function name args returnType (Block $ toList emits)
 
 dsDef :: Tc.DefTc -> DsM [Def]
 dsDef (Tc.DefFn fn) = pure <$> dsFunction fn
@@ -189,7 +191,7 @@ constructorAllocSize (Tc.FunCons (_loc, _) _ tys : cons) = do
 dsArg :: Tc.ArgTc -> DsM Arg
 dsArg (Tc.Arg NoExtField name ty) = Arg name <$> dsType ty
 
-dsStmt :: Tc.StmtTc -> DsM TyExpr
+dsStmt :: Tc.StmtTc -> DsM Statement
 dsStmt = \case
     Tc.SExpr NoExtField expr -> dsExpr expr
 
@@ -219,13 +221,16 @@ dsExpr = \case
         let letTy = view stmtType info
         let exprTy = view varType info
         exprTy <- dsType exprTy
-        unnamed $ typed letTy (Let name exprTy (Just expr))
+        unnamed $ pure (Let name exprTy (Just expr))
         namespace <- view namespace
         unitGlobalVariable namespace
-    Tc.Ass (info, binding) name op expr -> named $ typed (view stmtType info) =<< ass name (view varType info) binding op expr
+    Tc.Ass (info, binding) name op expr -> do
+        stmt <- ass name (view varType info) binding op expr
+        emit stmt
+        pure unit
     Tc.Ret (_info, ty) expr -> do
         expr <- mapM dsExpr expr
-        unnamed $ typed ty (Return (fromMaybe unit expr))
+        unnamed $ pure (Return (fromMaybe unit expr))
         namespace <- view namespace
         unitGlobalVariable namespace
     Tc.EBlock NoExtField block@(Tc.Block (_, ty) _ _) -> do
@@ -240,11 +245,11 @@ dsExpr = \case
         expr <- mapM dsExpr mbExpr
         case expr of
             Nothing -> do
-                unnamed $ typed ty Break
+                unnamed $ pure Break
                 unitVarible
             Just expr -> do
                 f expr
-                unnamed $ typed ty Break
+                unnamed $ pure Break
                 namespace <- view namespace
                 unitGlobalVariable namespace
     Tc.If (_info, ty) cond trueBlk mbFalseBlk -> do
@@ -254,22 +259,22 @@ dsExpr = \case
         f <- ask
         trueBlk <- dsBlock f var trueBlk
         mbFalseBlk <- mapM (dsBlock f var) mbFalseBlk
-        unnamed $ typed ty (If cond trueBlk mbFalseBlk)
+        unnamed $ pure (If cond trueBlk mbFalseBlk)
         named $ pure $ Typed ty' (Var Bound var)
     Tc.While (_info, ty) cond block -> do
         cond <- dsExpr cond
         ty' <- dsType ty
         var <- declare ty'
         namespace <- view namespace
-        block <- dsBlock (Ctx (emit . Typed Unit . Ass var ty') namespace) var block
-        unnamed $ typed ty (While cond block)
+        block <- dsBlock (Ctx (emit . Ass var ty') namespace) var block
+        unnamed $ pure (While cond block)
         named $ pure $ Typed Unit (Var Bound var)
     Tc.Loop (_info, ty) block -> do
         ty' <- dsType ty
         var <- declare ty'
         namespace <- view namespace
-        block <- dsBlock (Ctx (emit . Typed Unit . Ass var ty') namespace) var block
-        unnamed $ typed ty (While true block)
+        block <- dsBlock (Ctx (emit . Ass var ty') namespace) var block
+        unnamed $ pure (While true block)
         named $ pure $ Typed ty' (Var Bound var)
     Tc.Lam (_info, ty) lamArgs body -> do
         args <- mapM mkArg lamArgs
@@ -317,7 +322,7 @@ extractCatch loc arms = (go mempty (lefts arms),) <$> maybe nonexhaustive pure (
                     (Ident $ "$nomatch$" <> show n)
                     (Ident $ "$nomatch$" <> show n)
                 )
-                (pure $ Typed Unit $ ToStderrExit name)
+                (Block [Expr $ Typed Unit $ ToStderrExit name])
     go :: Set Int -> [MatchArm] -> [MatchArm]
     go _ [] = []
     go seen (arm@(MatchArm (PCon n _) _) : arms) =
@@ -328,11 +333,11 @@ dsMatchArms [] = pure []
 dsMatchArms (Tc.MatchArm _loc pat body : rest) = do
     pat <- dsPat pat
     body <-
-        (\(ls, r) -> maybe (pure r) (<> pure r) $ nonEmpty (toList ls))
+        (\(ls, r) -> toList ls <> [Expr r]) -- TODO: Should we append Expr r here?
             <$> contextually (dsExpr body)
     case pat of
-        Left catchAll -> pure [Right (Catch catchAll body)]
-        Right pat -> (Left (MatchArm pat body) :) <$> dsMatchArms rest
+        Left catchAll -> pure [Right (Catch catchAll (Block body))]
+        Right pat -> (Left (MatchArm pat (Block body)) :) <$> dsMatchArms rest
 
 dsPat :: Tc.PatternTc -> DsM (Either ExplicitName Pattern)
 dsPat = \case
@@ -373,7 +378,7 @@ mkArg (Tc.LamArg ty name) = do
     pure (Arg name ty)
 
 -- TODO: Rewrite
-dsBlock :: Ctx -> ExplicitName -> Tc.BlockTc -> DsM [TyExpr]
+dsBlock :: Ctx -> ExplicitName -> Tc.BlockTc -> DsM Block
 dsBlock f _ (Tc.Block (_, Tc.TyLit NoExtField Tc.Unit) stmts tail) = do
     nms <- use names
     n <- use nameCounter
@@ -384,7 +389,7 @@ dsBlock f _ (Tc.Block (_, Tc.TyLit NoExtField Tc.Unit) stmts tail) = do
     assign nameCounter n'
     modifying lifted (<> lifteds)
     modifying staticStrings (<> strings)
-    pure (toList emits)
+    pure (Block $ toList emits)
 dsBlock f _ (Tc.Block _ stmts Nothing) = do
     nms <- use names
     n <- use nameCounter
@@ -394,7 +399,7 @@ dsBlock f _ (Tc.Block _ stmts Nothing) = do
     assign nameCounter n'
     modifying lifted (<> lifteds)
     modifying staticStrings (<> strings)
-    pure (toList emits)
+    pure (Block $ toList emits)
 dsBlock f variable (Tc.Block (_, ty) stmts (Just tail)) = do
     nms <- use names
     n <- use nameCounter
@@ -404,12 +409,12 @@ dsBlock f variable (Tc.Block (_, ty) stmts (Just tail)) = do
                 ty <- dsType ty
                 mapM_ dsStmt stmts
                 tail <- dsExpr tail
-                emit $ Typed Unit $ Ass variable ty tail
+                emit $ Ass variable ty tail
     assign names names'
     assign nameCounter n'
     modifying lifted (<> lifteds)
     modifying staticStrings (<> strings)
-    pure (toList emits)
+    pure (Block $ toList emits)
 
 dsLit :: Tc.LitTc -> DsM Expr
 dsLit = \case
@@ -424,7 +429,7 @@ dsLit = \case
     Tc.BoolLit NoExtField bool -> pure $ Constant $ BoolLit bool
     Tc.UnitLit NoExtField -> pure $ Constant UnitLit
 
-ass :: ExplicitName -> Tc.TypeTc -> Bound.Boundedness -> Tc.AssignOp -> Tc.ExprTc -> DsM Expr
+ass :: ExplicitName -> Tc.TypeTc -> Bound.Boundedness -> Tc.AssignOp -> Tc.ExprTc -> DsM Statement
 ass name typ _ Tc.DerefAssign xpr = do
     ty <- dsType typ
     expr <- dsExpr xpr
@@ -490,11 +495,11 @@ dsBound = \case
     Bound.Builtin -> Function
     Bound.Imported -> Function
 
-contextually :: DsM a -> DsM (DList TyExpr, a)
+contextually :: DsM a -> DsM (DList Statement, a)
 contextually m = do
-    exprs <- use expressions
-    assign expressions mempty
+    exprs <- use statements
+    assign statements mempty
     e <- m
-    emits <- use expressions
-    assign expressions exprs
+    emits <- use statements
+    assign statements exprs
     pure (emits, e)

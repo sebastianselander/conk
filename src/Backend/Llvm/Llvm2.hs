@@ -6,11 +6,12 @@ import Relude hiding (Type, and, div, or, rem)
 import Text.Pretty.Simple (pShow)
 
 import Data.Map qualified as Map
+import Data.Set qualified as Set
+import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import Prettyprinter qualified as Pretty
 
 import Backend.Core.Pretty (pExpr)
-import Backend.Llvm.Monad (entryLabel)
+import Backend.Llvm.Monad (entryLabel, labelReserved)
 import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types
     ( ArithOp (..),
@@ -20,7 +21,7 @@ import Backend.Llvm.Types
       Definition (..),
       Ellipsis (NoEllipsis),
       Instruction (..),
-      Label (L),
+      Label (L, labelName),
       Module (..),
       Named (..),
       Operand (..),
@@ -46,6 +47,9 @@ data IRState = IRState
     , bindings :: Bindings
     , nameCounter :: Int
     , namespace :: Namespace
+    , breakLabel :: Label
+    , reservedLabels :: Set Label
+    , labelCounter :: Int
     }
 
 emptyIRState :: Namespace -> Bindings -> IRState
@@ -56,6 +60,9 @@ emptyIRState namespace bindings =
         , bindings = bindings
         , nameCounter = 0
         , namespace = namespace
+        , breakLabel = entryLabel
+        , reservedLabels = mempty
+        , labelCounter = 0
         }
 
 type IRBuilder a = (ReaderT (IORef IRState) IO) a
@@ -77,7 +84,6 @@ assemble (Core.Program modules) = traverse assembleModule modules
 assembleModule :: Core.Module -> IO Module
 assembleModule mod@(Core.Module namespace defs) = do
     let bindings = createBindings mod
-    Text.putStrLn $ toStrict $ pShow bindings
     state <- newIORef (emptyIRState namespace bindings)
     defs <- runReaderT (traverse assembleDefinition defs) state
     pure $ Module defs
@@ -111,11 +117,16 @@ createBindings (Core.Module namespace defs) = foldr get preludeBindings defs
 assembleDefinition :: Core.Def -> IRBuilder Definition
 assembleDefinition def = case def of
     Core.Fn origin name arguments returnType block -> do
+        ref <- ask
+        modifyIORef ref $ \state -> state {builderBlock = Nothing, blocks = mempty}
         openBlock entryLabel
         arguments <- traverse assembleArgument arguments
         blocks <- assembleExpressions block
+        emitBlock
         pure (Function origin name arguments returnType blocks)
     Core.Main namespace block -> do
+        ref <- ask
+        modifyIORef ref $ \state -> state {builderBlock = Nothing, blocks = mempty}
         openBlock entryLabel
         let name = EName namespace "main" "main"
         blocks <- assembleExpressions block
@@ -166,6 +177,7 @@ assembleExpressions exprs = do
         ref <- ask
         state <- readIORef ref
         let block = finalizePartialBlock (Nameless (Ret Nothing)) <$> state.builderBlock
+        modifyIORef ref $ \state -> state {builderBlock = Nothing}
         case block of
             Nothing -> pure (toList state.blocks)
             Just block -> pure (toList $ state.blocks `snoc` block)
@@ -178,7 +190,7 @@ openBlock lbl = do
 emitBlockStart :: Label -> IRBuilder ()
 emitBlockStart lbl = emitBlock >> openBlock lbl
 
-currentBlock :: IRBuilder Label
+currentBlock :: (HasCallStack) => IRBuilder Label
 currentBlock = do
     ref <- ask
     state <- readIORef ref
@@ -192,13 +204,21 @@ emitBlock = do
     state <- readIORef ref
     let state' =
             state
-                { blocks =
+                { builderBlock = Nothing
+                , blocks =
                     maybe
                         state.blocks
                         (\block -> state.blocks `snoc` finalizePartialBlock (Nameless $ Ret Nothing) block)
                         state.builderBlock
                 }
     writeIORef ref state'
+
+assembleLoadExpression :: Core.TyExpr -> IRBuilder Operand
+assembleLoadExpression expr = do
+    operand <- assembleExpression expr
+    case operand of
+        LocalReference {} -> load operand
+        ConstantOperand {} -> pure operand
 
 assembleExpression :: (HasCallStack) => Core.TyExpr -> IRBuilder Operand
 assembleExpression (Core.Typed ty expr) =
@@ -207,22 +227,18 @@ assembleExpression (Core.Typed ty expr) =
         Core.Constant lit -> do
             pure (assembleLiteral lit)
         Core.Var binding name -> do
-            liftIO $ print name.name
             lookupBinding name
         Core.BinOp leftExpr operator rightExpr -> do
-            leftExpr <- assembleExpression leftExpr
-            rightExpr <- assembleExpression rightExpr
-            leftExpr' <- load leftExpr
-            rightExpr' <- load rightExpr
-            llvmBinOp operator ty leftExpr' rightExpr'
+            leftExpr <- assembleLoadExpression leftExpr
+            rightExpr <- assembleLoadExpression rightExpr
+            llvmBinOp operator ty leftExpr rightExpr
         Core.PrefixOp Core.Deref expr -> undefined
         Core.PrefixOp Core.Ref expr -> undefined
         Core.PrefixOp Core.Not expr -> undefined
         Core.PrefixOp Core.Neg expr -> undefined
         Core.App appExpr argExprs -> do
-            liftIO $ print (pExpr (Core.Typed ty expr))
-            app <- assembleExpression appExpr
-            args <- mapM assembleExpression argExprs
+            app <- assembleLoadExpression appExpr
+            args <- mapM assembleLoadExpression argExprs
             call ty app args
         Core.Let name varType Nothing -> do
             operand <- alloca name varType
@@ -230,28 +246,29 @@ assembleExpression (Core.Typed ty expr) =
             pure operand
         Core.Let name varType (Just expr) -> do
             operand <- alloca name varType
-            value <- assembleExpression expr
+            value <- assembleLoadExpression expr
             insertBinding name operand
             () <- store value operand
             pure operand
         Core.DerefAss name varType expr -> undefined
         Core.Ass name varType expr -> do
-            expr <- assembleExpression expr
+            expr <- assembleLoadExpression expr
             operand <- lookupBinding name
             store expr operand
             unit
         Core.Return expr -> do
-            operand <- assembleExpression expr
-            v <- load operand
-            res <- ret v
-            pure (poison (typeOf v))
-        Core.Break -> undefined
+            operand <- assembleLoadExpression expr
+            res <- ret operand
+            pure (poison (typeOf operand))
+        Core.Break -> do
+            state <- ask >>= readIORef
+            _ <- jump state.breakLabel
+            unit
         Core.If condition trueBlk falseBlk -> do
             let true = L "if_true"
             let false = L "if_false"
             let end = L "if_cont"
-            condition <- assembleExpression condition
-            condition <- load condition
+            condition <- assembleLoadExpression condition
             _ <- br condition true (maybe end (const false) falseBlk)
             emitBlockStart true
             mapM_ assembleExpression trueBlk
@@ -262,13 +279,23 @@ assembleExpression (Core.Typed ty expr) =
             emitBlockStart end
             unit -- hacky
         Core.While condition blk -> do
-            let start = L "while_start"
-            let continue = L "while_continue"
-            let exit = L "while_exit"
+            start <- mkLabel "while_start"
+            continue <- mkLabel "while_continue"
+            end <- mkLabel "while_end"
             _ <- jump continue
             emitBlockStart continue
-            condition <- assembleExpression condition
-            undefined
+            condition <- assembleLoadExpression condition
+            _ <- br condition start end
+            emitBlockStart start
+            ref <- ask
+            state <- readIORef ref
+            writeIORef ref (state {breakLabel = end})
+            ops <- mapM assembleExpression blk
+            liftIO $ print ops
+            writeIORef ref (state {breakLabel = state.breakLabel})
+            _ <- jump continue
+            emitBlockStart end
+            unit
         Core.Closure fun env -> undefined
         Core.StructIndexing expr n -> undefined
         Core.ExtractFree bindName envName index -> undefined
@@ -492,6 +519,31 @@ br operand leftLbl rightLbl = emitTerminator (Br operand leftLbl rightLbl)
 
 unit :: (Monad m) => m Operand
 unit = pure $ ConstantOperand LUnit
+
+copyModifyIORef :: (MonadIO m) => IORef a -> (a -> b) -> m (IORef b)
+copyModifyIORef ref f = do
+    a <- readIORef ref
+    newIORef (f a)
+
+mkLabel :: Text -> IRBuilder Label
+mkLabel desc = do
+    ref <- ask
+    state <- readIORef ref
+    (lbl, n) <- go state.labelCounter ""
+    modifyIORef ref $ \state -> state {labelCounter = n, reservedLabels = Set.insert lbl state.reservedLabels}
+    if Text.elem ' ' desc
+        then pure (lbl {labelName = "\"" <> lbl.labelName <> "\""})
+        else pure lbl
+  where
+    go n suffix = do
+        let lbl = L $ desc <> suffix
+        ref <- ask
+        state <- readIORef ref
+        let used = state.reservedLabels
+        if lbl `Set.member` used
+            then do
+                go (n + 1) ("." <> show n)
+            else pure (lbl, n)
 
 class Value a where
     value :: a -> Either Terminator Operand

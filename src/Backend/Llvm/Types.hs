@@ -80,7 +80,7 @@ data ArithOp = LlvmAdd | LlvmSub | LlvmMul | LlvmDiv | LlvmRem
 data CmpOp = LlvmEq | LlvmNeq | LlvmGt | LlvmLt | LlvmGe | LlvmLe
     deriving (Eq, Ord, Show)
 
-newtype Label = L Text
+newtype Label = L {labelName :: Text}
     deriving (Eq, Ord, Show)
 
 data Instruction
