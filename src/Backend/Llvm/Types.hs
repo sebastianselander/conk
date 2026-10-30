@@ -22,12 +22,12 @@ data PartialBlock = PartialBlock
     }
     deriving (Eq, Ord, Show)
 
-finalizePartialBlock :: Named Terminator -> PartialBlock -> BasicBlock
-finalizePartialBlock term PartialBlock {partialLabel, partialInstructions, partialTerminator} =
+finalizePartialBlock :: PartialBlock -> BasicBlock
+finalizePartialBlock PartialBlock {partialLabel, partialInstructions, partialTerminator} =
     BasicBlock
         { label = partialLabel
         , instructions = toList partialInstructions
-        , terminator = fromMaybe term partialTerminator
+        , terminator = fromMaybe (Nameless $ Ret Nothing) partialTerminator
         }
 
 emptyPartialBlock :: Label -> PartialBlock
@@ -38,7 +38,11 @@ emptyPartialBlock lbl =
         , partialTerminator = Nothing
         }
 
-data BasicBlock = BasicBlock {label :: Label, instructions :: [Named Instruction], terminator :: Named Terminator}
+data BasicBlock = BasicBlock
+    { label :: Label
+    , instructions :: [Named Instruction]
+    , terminator :: Named Terminator
+    }
     deriving (Eq, Ord, Show)
 
 data Terminator

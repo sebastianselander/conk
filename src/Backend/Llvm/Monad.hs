@@ -82,7 +82,7 @@ emitBlock = do
     let instrs = toList partialBlock.partialInstructions
     let blk =
             BasicBlock
-                { terminator = fromMaybe (Nameless $ Ret Nothing) partialBlock.partialTerminator
+                { terminator = Nameless $ Ret Nothing
                 , label = partialBlock.partialLabel
                 , instructions = instrs
                 }
@@ -102,7 +102,7 @@ emitInstruction :: Named Instruction -> IRBuilder ()
 emitInstruction instr = modifying builderBlock $ \block -> block {partialInstructions = block.partialInstructions `snoc` instr}
 
 emitTerminator :: Named Terminator -> IRBuilder ()
-emitTerminator term = modifying builderBlock $ \block -> block {partialTerminator = Just $ fromMaybe term block.partialTerminator}
+emitTerminator term = undefined -- modifying builderBlock $ \block -> block {partialTerminator = Just $ fromMaybe term block.partialTerminator}
 
 block :: Label -> IRBuilder ()
 block lbl = do

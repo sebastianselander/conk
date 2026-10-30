@@ -147,7 +147,10 @@ dsFunction def@(Tc.Fn NoExtField name _tyParams args returnType (Tc.Block (_info
     assign statements mempty
     namespace <- view namespace
     if isMain def
-        then pure $ Main namespace (Block $ toList emits)
+        then case returnType of
+            (I 1) ->
+                pure $ Main namespace (Block $ toList (emits `snoc` Return unit))
+            _ -> pure $ Main namespace (Block $ toList emits)
         else case returnType of
             (I 1) ->
                 pure
@@ -193,7 +196,7 @@ dsArg (Tc.Arg NoExtField name ty) = Arg name <$> dsType ty
 
 dsStmt :: Tc.StmtTc -> DsM Statement
 dsStmt = \case
-    Tc.SExpr NoExtField expr -> dsExpr expr
+    Tc.SExpr NoExtField expr -> Expr <$> dsExpr expr
 
 dsExpr :: Tc.ExprTc -> DsM TyExpr
 dsExpr = \case
@@ -292,15 +295,16 @@ dsExpr = \case
                     freshName
                     args
                     returnType
-                    (toList (lambdaBody `snoc` Typed returnType (Return expr)))
+                    (Block $ toList (lambdaBody `snoc` Return expr))
             )
         pure (Typed ty' (Var Function freshName))
     Tc.Match (loc, ty) scrutinee matchArms -> do
-        ty <- dsType ty
         scrutinee <- dsExpr scrutinee
         matchArms <- dsMatchArms matchArms
         matchArms <- extractCatch loc matchArms
-        named $ pure $ Typed ty $ uncurry (Match scrutinee) matchArms
+        emit $ uncurry (Match scrutinee) matchArms
+        -- FIXME: Very likely incorrect
+        pure unit
     Tc.Expr (Tc.TypeApp expr _ _) -> dsExpr expr
 
 -- TODO: Really reconsider if this is the logic we want

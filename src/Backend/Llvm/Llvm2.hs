@@ -1,17 +1,16 @@
 module Backend.Llvm.Llvm2 where
 
-import Data.DList (DList, snoc)
-import Data.Maybe (fromJust)
+import Data.DList (DList, singleton, snoc)
+import Data.Text.Lazy (unpack)
 import Relude hiding (Type, and, div, or, rem)
 import Text.Pretty.Simple (pShow)
 
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as Text
-import Data.Text.IO qualified as Text
 
-import Backend.Core.Pretty (pExpr)
-import Backend.Llvm.Monad (entryLabel, labelReserved)
+import Backend.Core.Types (Block (Block), Statement)
+import Backend.Llvm.Monad (entryLabel)
 import Backend.Llvm.Prelude (prelude)
 import Backend.Llvm.Types
     ( ArithOp (..),
@@ -42,8 +41,7 @@ import Origin qualified
 type Bindings = Map ExplicitName Operand
 
 data IRState = IRState
-    { builderBlock :: Maybe PartialBlock
-    , blocks :: DList BasicBlock
+    { builderBlock :: PartialBlock
     , bindings :: Bindings
     , nameCounter :: Int
     , namespace :: Namespace
@@ -55,8 +53,7 @@ data IRState = IRState
 emptyIRState :: Namespace -> Bindings -> IRState
 emptyIRState namespace bindings =
     IRState
-        { builderBlock = Nothing
-        , blocks = mempty
+        { builderBlock = emptyPartialBlock entryLabel
         , bindings = bindings
         , nameCounter = 0
         , namespace = namespace
@@ -65,7 +62,9 @@ emptyIRState namespace bindings =
         , labelCounter = 0
         }
 
-type IRBuilder a = (ReaderT (IORef IRState) IO) a
+newtype IRBuilder a = IRBuilder {runIRBuilder :: StateT (DList BasicBlock) (ReaderT (IORef IRState) IO) a}
+    deriving
+        (Applicative, Functor, Monad, MonadIO, MonadReader (IORef IRState), MonadState (DList BasicBlock))
 
 lookupBinding :: (HasCallStack) => ExplicitName -> IRBuilder Operand
 lookupBinding name = do
@@ -88,21 +87,10 @@ assembleModule mod@(Core.Module namespace defs) = do
     defs <- runReaderT (traverse assembleDefinition defs) state
     pure $ Module defs
 
-withBlock :: Label -> IRBuilder (Terminator, b) -> IRBuilder (DList BasicBlock, b)
-withBlock lbl action = do
-    ref <- ask
-    state <- readIORef ref
-    tmpRef <- newIORef (state {builderBlock = Just (emptyPartialBlock lbl), blocks = mempty})
-    local (const tmpRef) do
-        (term, b) <- action
-        state <- readIORef tmpRef
-        let bb = finalizePartialBlock (Nameless term) (fromJust state.builderBlock)
-        pure (state.blocks `snoc` bb, b)
-
 createBindings :: Core.Module -> Bindings
 createBindings (Core.Module namespace defs) = foldr get preludeBindings defs
   where
-    -- preludeBindings :: Bindings
+    preludeBindings :: Bindings
     preludeBindings = Map.fromList $ fst <$> fst prelude
     get :: Core.Def -> Bindings -> Bindings
     get def bindings = case def of
@@ -114,31 +102,87 @@ createBindings (Core.Module namespace defs) = foldr get preludeBindings defs
         Core.TypeSyn _ _ -> undefined
         Core.Con _ name ty _ -> Map.insert name (ConstantOperand (GlobalReference ty name)) bindings
 
-assembleDefinition :: Core.Def -> IRBuilder Definition
+assembleDefinition :: Core.Def -> ReaderT (IORef IRState) IO Definition
 assembleDefinition def = case def of
     Core.Fn origin name arguments returnType block -> do
-        ref <- ask
-        modifyIORef ref $ \state -> state {builderBlock = Nothing, blocks = mempty}
-        openBlock entryLabel
-        arguments <- traverse assembleArgument arguments
-        blocks <- assembleExpressions block
-        emitBlock
-        pure (Function origin name arguments returnType blocks)
+        (arguments, blocks) <- flip runStateT mempty $ runIRBuilder $ do
+            openBlock entryLabel
+            arguments <- traverse assembleArgument arguments
+            assembleBlock block
+            emitBlock
+            pure arguments
+        pure (Function origin name arguments returnType (toList blocks))
     Core.Main namespace block -> do
-        ref <- ask
-        modifyIORef ref $ \state -> state {builderBlock = Nothing, blocks = mempty}
-        openBlock entryLabel
-        let name = EName namespace "main" "main"
-        blocks <- assembleExpressions block
-        pure (Function Origin.Function name [] (I 1) blocks)
+        ((), blocks) <- flip runStateT mempty $ runIRBuilder $ do
+            openBlock entryLabel
+            assembleBlock block
+            emitBlock
+        pure (Function Origin.Function (EName namespace "main" "main") [] (I 1) (toList blocks))
     Core.Decl namespace ty name args -> pure (Declare ty name args NoEllipsis)
     Core.StaticString name ty txt -> pure (GlobalString name ty txt)
     Core.TypeSyn name ty -> pure (TypeDefinition name ty)
     Core.Con index name ty args -> assembleConstructor index name ty args
 
-assembleConstructor :: Int -> ExplicitName -> Type -> [Type] -> IRBuilder Definition
+assembleBlock :: Block -> IRBuilder ()
+assembleBlock (Block statements) = mapM_ assembleStatement statements
+
+assembleStatement :: Statement -> IRBuilder ()
+assembleStatement stmt = case stmt of
+    Core.Let name varType Nothing -> do
+        operand <- alloca name varType
+        insertBinding name operand
+    Core.Let name varType (Just expr) -> do
+        operand <- alloca name varType
+        value <- assembleLoadExpression expr
+        insertBinding name operand
+        store value operand
+    Core.DerefAss name varType expr -> undefined
+    Core.Ass name varType expr -> do
+        expr <- assembleLoadExpression expr
+        operand <- lookupBinding name
+        store expr operand
+    Core.Return expr -> do
+        operand <- assembleLoadExpression expr
+        void $ ret operand
+    Core.Break -> do
+        breakLabel <- (.breakLabel) <$> (ask >>= readIORef)
+        jump breakLabel
+    Core.If condition trueBlk falseBlk -> do
+        let true = L "if_true"
+        let false = L "if_false"
+        let end = L "if_cont"
+        condition <- assembleLoadExpression condition
+        br condition true (maybe end (const false) falseBlk)
+        emitBlockStart true
+        assembleBlock trueBlk
+        jump end
+        emitBlockStart false
+        maybe (pure mempty) assembleBlock falseBlk
+        jump end
+        emitBlockStart end
+    Core.While condition blk -> do
+        begin <- mkLabel "while_begin"
+        continue <- mkLabel "while_continue"
+        end <- mkLabel "while_end"
+        liftIO $ print begin
+        liftIO $ print continue
+        liftIO $ print end
+        jump continue
+        emitBlockStart continue
+        condition <- assembleLoadExpression condition
+        br condition begin end
+        emitBlockStart begin
+        withBreakLabel end $ assembleBlock blk
+        jump continue
+        emitBlockStart end
+    Core.Match scrutinee@(Core.Typed _ _) matchArms (Core.Catch _name catchExpr) -> undefined
+    Core.Expr _ -> undefined
+
+assembleConstructor ::
+    Int -> ExplicitName -> Type -> [Type] -> ReaderT (IORef IRState) IO Definition
 assembleConstructor index name ty args = do
-    (blocks, (args, retTy)) <- withBlock entryLabel $ do
+    ((args, retTy), blocks) <- flip runStateT mempty $ runIRBuilder $ do
+        openBlock entryLabel
         args <- mapM (\ty -> LocalReference ty <$> fresh) args
         let retTy = getReturnType ty
         name' <- fresh
@@ -154,8 +198,8 @@ assembleConstructor index name ty args = do
             store argument mallocedPtr
             store malloced value
         struct <- load returnOperand
-        term <- ret struct
-        pure (term, (args, retTy))
+        ret struct
+        pure (args, retTy)
     pure (Function Origin.ConstructorFn name args retTy (toList blocks))
 
 assembleArgument :: Core.Arg -> IRBuilder Operand
@@ -170,48 +214,28 @@ assembleArgument (Core.EnvArg namespace ty) = pure (LocalReference ty (EName nam
   where
     env = Ident "env"
 
-assembleExpressions :: [Core.TyExpr] -> IRBuilder [BasicBlock]
-assembleExpressions exprs = do
-    local id $ do
-        traverse_ assembleExpression exprs
-        ref <- ask
-        state <- readIORef ref
-        let block = finalizePartialBlock (Nameless (Ret Nothing)) <$> state.builderBlock
-        modifyIORef ref $ \state -> state {builderBlock = Nothing}
-        case block of
-            Nothing -> pure (toList state.blocks)
-            Just block -> pure (toList $ state.blocks `snoc` block)
-
 openBlock :: Label -> IRBuilder ()
 openBlock lbl = do
     ref <- ask
-    modifyIORef ref $ \s -> s {builderBlock = Just $ emptyPartialBlock lbl}
-
-emitBlockStart :: Label -> IRBuilder ()
-emitBlockStart lbl = emitBlock >> openBlock lbl
-
-currentBlock :: (HasCallStack) => IRBuilder Label
-currentBlock = do
-    ref <- ask
-    state <- readIORef ref
-    case state.builderBlock of
-        Nothing -> error "No block has been started"
-        Just partialBlock -> pure partialBlock.partialLabel
+    modifyIORef ref $ \s -> s {builderBlock = emptyPartialBlock lbl}
 
 emitBlock :: IRBuilder ()
 emitBlock = do
     ref <- ask
     state <- readIORef ref
-    let state' =
-            state
-                { builderBlock = Nothing
-                , blocks =
-                    maybe
-                        state.blocks
-                        (\block -> state.blocks `snoc` finalizePartialBlock (Nameless $ Ret Nothing) block)
-                        state.builderBlock
-                }
-    writeIORef ref state'
+    modify $ \s -> snoc s (finalizePartialBlock state.builderBlock)
+
+emitBlockStart :: Label -> IRBuilder ()
+emitBlockStart lbl = do
+    liftIO $ putStrLn $ "emitting: " <> show lbl
+    emitBlock
+    openBlock lbl
+
+currentBlock :: (HasCallStack) => IRBuilder Label
+currentBlock = do
+    ref <- ask
+    state <- readIORef ref
+    pure state.builderBlock.partialLabel
 
 assembleLoadExpression :: Core.TyExpr -> IRBuilder Operand
 assembleLoadExpression expr = do
@@ -240,66 +264,9 @@ assembleExpression (Core.Typed ty expr) =
             app <- assembleLoadExpression appExpr
             args <- mapM assembleLoadExpression argExprs
             call ty app args
-        Core.Let name varType Nothing -> do
-            operand <- alloca name varType
-            insertBinding name operand
-            pure operand
-        Core.Let name varType (Just expr) -> do
-            operand <- alloca name varType
-            value <- assembleLoadExpression expr
-            insertBinding name operand
-            () <- store value operand
-            pure operand
-        Core.DerefAss name varType expr -> undefined
-        Core.Ass name varType expr -> do
-            expr <- assembleLoadExpression expr
-            operand <- lookupBinding name
-            store expr operand
-            unit
-        Core.Return expr -> do
-            operand <- assembleLoadExpression expr
-            res <- ret operand
-            pure (poison (typeOf operand))
-        Core.Break -> do
-            state <- ask >>= readIORef
-            _ <- jump state.breakLabel
-            unit
-        Core.If condition trueBlk falseBlk -> do
-            let true = L "if_true"
-            let false = L "if_false"
-            let end = L "if_cont"
-            condition <- assembleLoadExpression condition
-            _ <- br condition true (maybe end (const false) falseBlk)
-            emitBlockStart true
-            mapM_ assembleExpression trueBlk
-            _ <- jump end
-            emitBlockStart false
-            maybe (pure ()) (mapM_ assembleExpression) falseBlk
-            _ <- jump end
-            emitBlockStart end
-            unit -- hacky
-        Core.While condition blk -> do
-            start <- mkLabel "while_start"
-            continue <- mkLabel "while_continue"
-            end <- mkLabel "while_end"
-            _ <- jump continue
-            emitBlockStart continue
-            condition <- assembleLoadExpression condition
-            _ <- br condition start end
-            emitBlockStart start
-            ref <- ask
-            state <- readIORef ref
-            writeIORef ref (state {breakLabel = end})
-            ops <- mapM assembleExpression blk
-            liftIO $ print ops
-            writeIORef ref (state {breakLabel = state.breakLabel})
-            _ <- jump continue
-            emitBlockStart end
-            unit
         Core.Closure fun env -> undefined
         Core.StructIndexing expr n -> undefined
         Core.ExtractFree bindName envName index -> undefined
-        Core.Match scrutinee@(Core.Typed _ _) matchArms (Core.Catch _name catchExpr) -> undefined
         Core.ToStderrExit var -> undefined
 
 assembleLiteral :: Core.Literal -> Operand
@@ -327,10 +294,10 @@ llvmBinOp op = case op of
     Core.EqOp -> eq
     Core.NeqOp -> neq
 
-jump :: Label -> IRBuilder Terminator
+jump :: Label -> IRBuilder ()
 jump lbl = emitTerminator (Jump lbl)
 
-ret :: Operand -> IRBuilder Terminator
+ret :: Operand -> IRBuilder ()
 ret operand = do
     emitTerminator (Ret $ Just operand)
 
@@ -389,40 +356,35 @@ ge = cmp LlvmGe
 le :: Type -> Operand -> Operand -> IRBuilder Operand
 le = cmp LlvmLe
 
-emitTerminator :: Terminator -> IRBuilder Terminator
+emitTerminator :: Terminator -> IRBuilder ()
 emitTerminator term = do
     ref <- ask
     state <- readIORef ref
-    let builderBlock = state.builderBlock
-    case builderBlock of
+    case state.builderBlock.partialTerminator of
+        Just term -> liftIO $ putStrLn $ "WARNING: Terminator already exists: " <> show term
         Nothing -> pure ()
-        Just builderBlock ->
-            modifyIORef ref $ \s ->
-                s
-                    { builderBlock =
-                        Just
-                            $ builderBlock
-                                { partialTerminator = Just $ fromMaybe (Nameless term) builderBlock.partialTerminator
-                                }
+    writeIORef
+        ref
+        ( state
+            { builderBlock =
+                state.builderBlock
+                    { partialTerminator = state.builderBlock.partialTerminator <|> Just (Nameless term)
                     }
-    pure term
+            }
+        )
 
 emitInstruction :: Named Instruction -> IRBuilder ()
 emitInstruction instr = do
     ref <- ask
     state <- readIORef ref
     let builderBlock = state.builderBlock
-    case builderBlock of
-        Nothing -> pure ()
-        Just builderBlock ->
-            modifyIORef ref $ \s ->
-                s
-                    { builderBlock =
-                        Just
-                            $ builderBlock
-                                { partialInstructions = builderBlock.partialInstructions `snoc` instr
-                                }
+    modifyIORef ref $ \state ->
+        state
+            { builderBlock =
+                builderBlock
+                    { partialInstructions = builderBlock.partialInstructions `snoc` instr
                     }
+            }
 
 alloca :: ExplicitName -> Type -> IRBuilder Operand
 alloca name ty = do
@@ -514,7 +476,7 @@ malloc ty operand = do
     emitInstruction $ Named name (Malloc operand)
     pure $ LocalReference ty name
 
-br :: Operand -> Label -> Label -> IRBuilder Terminator
+br :: Operand -> Label -> Label -> IRBuilder ()
 br operand leftLbl rightLbl = emitTerminator (Br operand leftLbl rightLbl)
 
 unit :: (Monad m) => m Operand
@@ -528,8 +490,7 @@ copyModifyIORef ref f = do
 mkLabel :: Text -> IRBuilder Label
 mkLabel desc = do
     ref <- ask
-    state <- readIORef ref
-    (lbl, n) <- go state.labelCounter ""
+    (lbl, n) <- go 0 ""
     modifyIORef ref $ \state -> state {labelCounter = n, reservedLabels = Set.insert lbl state.reservedLabels}
     if Text.elem ' ' desc
         then pure (lbl {labelName = "\"" <> lbl.labelName <> "\""})
@@ -544,6 +505,15 @@ mkLabel desc = do
             then do
                 go (n + 1) ("." <> show n)
             else pure (lbl, n)
+
+withBreakLabel :: Label -> IRBuilder a -> IRBuilder a
+withBreakLabel lbl action = do
+    ref <- ask
+    state <- readIORef ref
+    writeIORef ref (state {breakLabel = lbl})
+    a <- action
+    writeIORef ref state
+    pure a
 
 class Value a where
     value :: a -> Either Terminator Operand

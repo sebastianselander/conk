@@ -106,12 +106,56 @@ pDef (Fn _ name args typ exprs) =
         , parens (cat (punctuate comma (fmap pArg args)))
         , "->"
         , pType typ
-        , "{"
-        , hardline
-        , indent 4 $ hcat $ punctuate hardline (fmap pExpr exprs)
-        , hardline
+        , pBlock exprs
         ]
+
+pBlock :: Block -> Doc ann
+pBlock (Block statements) =
+    "{"
+        <> hardline
+        <> indent 4 (hcat $ punctuate hardline $ fmap pStatement statements)
+        <> hardline
         <> "}"
+
+pStatement :: Statement -> Doc ann
+pStatement stmt = case stmt of
+    Match scrutinee arms catch ->
+        "match"
+            <+> pExpr scrutinee
+            <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
+    Let name ty expr -> "let" <+> pIdent name.name <> ":" <+> pType ty <+> maybe emptyDoc (\e -> "=" <+> pExpr e) expr
+    Ass name ty expr -> pIdent name.name <> ":" <+> pType ty <+> "=" <+> pExpr expr
+    DerefAss name ty expr -> "*" <> pIdent name.name <> ":" <+> pType ty <+> "=" <+> pExpr expr
+    Return expr -> "return" <+> pExpr expr
+    Break -> "break"
+    If cond true mbfalse ->
+        let iff =
+                "if"
+                    <+> pExpr cond
+                    <+> "{"
+                    <> hardline
+                    <> pBlock true
+                    <> hardline
+                    <> "}"
+            els e =
+                "else"
+                    <+> "{"
+                    <> hardline
+                    <> pBlock e
+                    <> hardline
+                    <> "}"
+         in case mbfalse of
+                Nothing -> iff
+                Just false -> iff <+> els false
+    While cond block ->
+        "while"
+            <+> pExpr cond
+            <+> "{"
+            <> hardline
+            <> pBlock block
+            <> hardline
+            <> "}"
+    Expr expr -> pExpr expr
 
 pIdent :: Ident -> Doc ann
 pIdent (Ident name) = pretty name
@@ -129,38 +173,6 @@ pExpr (Typed _ expr) = go expr
         BinOp l op r -> pExpr l <+> pBinOp op <+> pExpr r
         PrefixOp op expr -> pPrefixOp op <> pExpr expr
         App l rs -> pExpr l <> parens (hcat (punctuate comma $ fmap pExpr rs))
-        Let name ty expr -> "let" <+> pIdent name.name <> ":" <+> pType ty <+> maybe emptyDoc (\e -> "=" <+> pExpr e) expr
-        Ass name ty expr -> pIdent name.name <> ":" <+> pType ty <+> "=" <+> pExpr expr
-        DerefAss name ty expr -> "*" <> pIdent name.name <> ":" <+> pType ty <+> "=" <+> pExpr expr
-        Return expr -> "return" <+> pExpr expr
-        Break -> "break"
-        If cond true mbfalse ->
-            let iff =
-                    "if"
-                        <+> pExpr cond
-                        <+> "{"
-                        <> hardline
-                        <> indent 4 (hcat $ punctuate hardline (fmap pExpr true))
-                        <> hardline
-                        <> "}"
-                els e =
-                    "else"
-                        <+> "{"
-                        <> hardline
-                        <> indent 4 (hcat $ punctuate hardline (fmap pExpr e))
-                        <> hardline
-                        <> "}"
-             in case mbfalse of
-                    Nothing -> iff
-                    Just false -> iff <+> els false
-        While cond exprs ->
-            "while"
-                <+> pExpr cond
-                <+> "{"
-                <> hardline
-                <> indent 4 (hcat $ punctuate hardline (fmap pExpr exprs))
-                <> hardline
-                <> "}"
         Closure fun freeVars ->
             braces
                 ( pExpr fun
@@ -171,26 +183,16 @@ pExpr (Typed _ expr) = go expr
             "get" <> parens (pExpr expr <> "," <+> show n)
         ExtractFree bindName envName index ->
             "let" <+> pretty bindName.name <+> "=" <+> pretty envName.name <> brackets (show index)
-        Match scrutinee arms catch ->
-            "match"
-                <+> pExpr scrutinee
-                <+> braces (hardline <> prettyArms arms <> hardline <> pCatch catch <> hardline)
         ToStderrExit txt -> "exit" <> parens (pretty txt.name)
 
 pCatch :: Catch -> Doc ann
-pCatch (Catch name expr) = pretty name.name <+> "=>" <+> concatWith (surround (semi <> hardline)) (fmap pExpr (toList expr))
+pCatch (Catch name block) = pretty name.name <+> "=>" <+> pBlock block
 
 prettyArms :: [MatchArm] -> Doc ann
 prettyArms = concatWith (surround hardline) . fmap prettyArm
 
 prettyArm :: MatchArm -> Doc ann
-prettyArm (MatchArm pat body) = case body of
-    (x :| []) -> prettyPat pat <+> "=>" <+> pExpr x
-    (x :| xs) ->
-        prettyPat pat
-            <+> "=>"
-            <+> braces
-                (hardline <> indent 4 (concatWith (surround (semi <> hardline)) (fmap pExpr (x : xs))) <> hardline)
+prettyArm (MatchArm pat block) = prettyPat pat <+> "=>" <+> pBlock block
 
 prettyShowPat :: Pattern -> Text
 prettyShowPat = renderStrict . layoutPretty defaultLayoutOptions . prettyPat
